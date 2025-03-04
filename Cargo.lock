@@ -715,6 +715,7 @@ dependencies = [
 [[package]]
 name = "stm32wba"
 version = "0.1.0"
+source = "git+https://github.com/ElsaLopez133/stm32wba55-pac.git#4b03330708e75eaa8c9b70bf9c93b562404157b8"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",

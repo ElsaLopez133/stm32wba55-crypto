@@ -10,12 +10,14 @@ use cortex_m_rt::entry;
 use cortex_m::asm;
 use defmt::info;
 
+const SHA256_DIGEST_LEN: usize = 32;
+
 // For "abc" input, we need to declare it properly
 static MESSAGE: [u8; 3] = *b"abc";
 
 // Static variable to store the hash result
 static mut HASH_RESULT: [u32; 8] = [0; 8];
-static mut HASH_RESULT_SWAPPED: [u32; 8] = [0; 8];
+
 #[entry]
 unsafe fn main() -> ! {
     // Access peripherals via PAC
@@ -26,21 +28,12 @@ unsafe fn main() -> ! {
     // Enable HASH peripheral clock via RCC_AHB2ENR register
     // HASH peripheral is located on AHB2
     clock.rcc_ahb2enr().modify(|_, w| w.hashen().set_bit());
-
-    info!("Starting SHA-256 hash calculation");
     
     // Reset HASH peripheral
     hash.hash_cr().write(|w| w.init().set_bit());
     while hash.hash_cr().read().init().bit_is_set() {
         asm::nop();
     }
-    info!("HASH peripheral initialized");
-
-    // Read and log initial HASH_CR value
-    let cr_value = hash.hash_cr().read().bits();
-    let algo = hash.hash_cr().read().algo().bits();
-    let datatype = hash.hash_cr().read().datatype().bits();
-    info!("Initial HASH_CR: 0x{:b}, ALGO: {:b}, DATATYPE: {:b}", cr_value, algo, datatype);
     
     // Configure for SHA-256 mode. HASH_CR pg844 Reference Manual
     hash.hash_cr().write(|w| w
@@ -65,37 +58,49 @@ unsafe fn main() -> ! {
         info!("HASH peripheral is ready for data input");
     }
 
-    // let word = 0x61626300;
-    // hash.hash_din().write(|w| w.bits(word));
-
-    // Pack bytes into a word (big-endian for SHA-256)
+    info!("Input message: {:?} (length: {} bytes)", MESSAGE, MESSAGE.len());
+    // Send message as 32-bit words
+    // For example message string “abc” with a bit string representation of “01100001 01100010 01100011” 
+    // is represented by a 32-bit word 0x00636261, and 8-bit words 0x61626300.
     let mut word = 0u32;
     for (i, &byte) in MESSAGE.iter().enumerate() {
-        // Shift existing bits and add new byte
-        word |= u32::from(byte) << (8 * (3 - (i % 4)));
+        // Pack bytes into a word (little endian)
+        word |= u32::from(byte) << (8 * (i % 4));
         
-        // Write word when we have 4 bytes or at the end of the message
-        if ((i + 1) % 4 == 0) || (i == MESSAGE.len() - 1) {
-            // If it's the last word and not a full 4-byte word, add padding
-            if i == MESSAGE.len() - 1 && MESSAGE.len() % 4 != 0 {
-                word |= 0x80 >> (8 * (i % 4 + 1));
-            }
-            
+        // When we have 4 bytes or at the end of the message, write the word
+        if (i % 4 == 3) || (i == MESSAGE.len() - 1) {
             info!("Writing word: 0x{:08x}", word);
             hash.hash_din().write(|w| w.bits(word));
             word = 0;
         }
     }
 
-
-    // If message length is not a multiple of 4, ensure proper padding
-    if MESSAGE.len() % 4 != 0 {
-        // Set NBLW to the number of valid bits in the last word
-        hash.hash_str().write(|w| w.nblw().bits((MESSAGE.len() as u8 % 4) * 8));
+    // Method 2: send message byte by byte if needed
+    // Make sure to set datatype to 0b10 (8-bit) if using this method
+    /*
+    for (i, &byte) in MESSAGE.iter().enumerate() {
+        info!("Writing byte[{}]: 0x{:02x} ({})", i, byte, byte as char);
+        hash.hash_din().write(|w| w.bits(u32::from(byte)));
+        
+        // Add a small delay after each write
+        for _ in 0..100 {
+            asm::nop();
+        }
     }
+    */
 
-    // Start padding and digest computation
-    hash.hash_str().write(|w| w.dcal().set_bit());
+    info!("All message bytes written to HASH_DIN");
+    
+    // Start digest calculation
+    info!("Setting DCAL bit to start digest calculation");
+    hash.hash_str().write(|w| w
+        .nblw().bits(8 * MESSAGE.len() as u8) // Set bit length (3 bytes = 24 bits)
+        .dcal().set_bit()                  // Start digest calculation
+    );
+
+    // Check peripheral status before starting calculation
+    let str_value = hash.hash_str().read().bits();
+    info!("HASH_STR: 0x{:b}", str_value);
 
     // Wait for busy bit to clear
     while hash.hash_sr().read().busy().bit_is_set() {
@@ -106,7 +111,12 @@ unsafe fn main() -> ! {
     while hash.hash_sr().read().dcis().bit_is_clear() {
         asm::nop();
     }
+    // hash.hash_str().modify(|_, w| w.dcal().set_bit());
     info!("Hash calculation complete");
+    
+    // Read final status register
+    let final_sr = hash.hash_sr().read().bits();
+    info!("Final HASH_SR: 0x{:b}", final_sr);
     
     // Read hash result from HASH_HR0-HASH_HR7
     HASH_RESULT[0] = hash.hash_hr0().read().bits();
@@ -118,12 +128,35 @@ unsafe fn main() -> ! {
     HASH_RESULT[6] = hash.hash_hr6().read().bits();
     HASH_RESULT[7] = hash.hash_hr7().read().bits();
     
-
+    // // Create byte-swapped version (in case endianness is an issue)
+    // for i in 0..8 {
+    //     HASH_RESULT_SWAPPED[i] = HASH_RESULT[i].swap_bytes();
+    // }
+    
+    // This converts the u32 values to bytes in little-endian format
+    /*
+    let mut byte_index = 0;
+    for word in HASH_RESULT.iter() {
+        HASH_RESULT_BYTES[byte_index] = (*word & 0xFF) as u8;
+        HASH_RESULT_BYTES[byte_index + 1] = ((*word >> 8) & 0xFF) as u8;
+        HASH_RESULT_BYTES[byte_index + 2] = ((*word >> 16) & 0xFF) as u8;
+        HASH_RESULT_BYTES[byte_index + 3] = ((*word >> 24) & 0xFF) as u8;
+        byte_index += 4;
+    }
+    */
+    
     // Output the original hash result
     info!("SHA-256 hash (as-is from registers):");
     info!("{:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}", 
         HASH_RESULT[0], HASH_RESULT[1], HASH_RESULT[2], HASH_RESULT[3],
         HASH_RESULT[4], HASH_RESULT[5], HASH_RESULT[6], HASH_RESULT[7]);
+    
+    // // Output the byte-swapped hash result
+    // info!("SHA-256 hash (byte-swapped):");
+    // info!("{:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}", 
+    //     HASH_RESULT_SWAPPED[0], HASH_RESULT_SWAPPED[1], HASH_RESULT_SWAPPED[2], HASH_RESULT_SWAPPED[3],
+    //     HASH_RESULT_SWAPPED[4], HASH_RESULT_SWAPPED[5], HASH_RESULT_SWAPPED[6], HASH_RESULT_SWAPPED[7]);
+    
     
     info!("Expected hash for 'abc': ba7816bf 8f01cfea 414140de 5dae2223 b00361a3 96177a9c b410ff61 f20015ad");
 

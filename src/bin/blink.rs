@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+// https://www.st.com/resource/en/user_manual/dm01047885.pdf Section 7.10
+
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};

@@ -27,6 +27,7 @@ static_cell = "2"
 # Optional allocator support
 embedded-alloc = "0.5.0"
 
-# stm32wba55-pac = { path = "/home/elopezpe/stm32wba55-pac", version = "0.1.0", features = ["rt", "critical-section"] }
-stm32wba = { path = "/home/elopezpe/stm32-rs/stm32wba", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
+stm32wba = { git = "https://github.com/ElsaLopez133/stm32wba55-pac.git", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
+# stm32wba = { path = "/home/elopezpe/stm32wba55-pac", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
+# stm32wba = { path = "/home/elopezpe/stm32-rs/stm32wba", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
 
