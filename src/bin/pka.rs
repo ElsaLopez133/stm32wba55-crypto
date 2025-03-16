@@ -3,24 +3,51 @@
 
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
 // use stm32wba::stm32wba55;
-use stm32wba::stm32wba55::{self, RAMCFG};
+use stm32wba::stm32wba55::{self};
 use {defmt_rtt as _, panic_probe as _};
 use cortex_m_rt::entry;
 use cortex_m::asm;
 use defmt::info;
+// use stm32_metapac::{metadata, pka};
+use core::{
+    mem::size_of,
+    ptr::{read_volatile, write_volatile},
+};
 
-// PKA RAM locations - these are already offsets from PKA base address
-const PKA_RAM_OFFSET: u32 = 0x400; 
-const OPERAND_LENGTH_OFFSET: u32 = 0x408 - 0x400; // Relative to PKA_RAM_OFFSET
-const OPERAND_A_OFFSET: u32 = 0xA50 - 0x400;
-const OPERAND_B_OFFSET: u32 = 0xC68 - 0x400;
-const MODULUS_OFFSET: u32 = 0x1088 - 0x400;
-const RESULT_OFFSET: u32 = 0xE78 - 0x400;
+const BASE: usize = 0x520C_2000;
+const PKA_RAM_OFFSET: usize = 0x400; 
+const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
+
+
+// PKA RAM locations
+const OPERAND_LENGTH_OFFSET: u32 = 0x408 ;
+const OPERAND_A_OFFSET: u32 = 0xA50;
+const OPERAND_B_OFFSET: u32 = 0xC68;
+const MODULUS_OFFSET: u32 = 0x1088;
+const RESULT_OFFSET: u32 = 0xE78;
 
 const OPERAND_LENGTH: u32 = 64;
-const A: u32 = 3;      // First operand
-const B: u32 = 11;     // Second operand
+const A: u32 = 2;      // First operand
+const B: u32 = 4;     // Second operand
 const N: u32 = 13;     // Modulus for addition
+
+
+unsafe fn write_ram(offset: usize, buf: &[u32]) {
+    debug_assert_eq!(offset % 4, 0);
+    debug_assert!(offset + buf.len() * size_of::<u32>() < 0x5800_33FF);
+    buf.iter().rev().enumerate().for_each(|(idx, &dw)| {
+        write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
+    });
+}
+
+unsafe fn read_ram(offset: usize, buf: &mut [u32]) {
+    debug_assert_eq!(offset % 4, 0);
+    debug_assert!(offset + buf.len() * size_of::<u32>() < 0x5800_33FF);
+    buf.iter_mut().rev().enumerate().for_each(|(idx, dw)| {
+        *dw = read_volatile((offset + idx * size_of::<u32>()) as *const u32);
+    });
+}
+
 
 #[entry]
 unsafe fn main() -> ! {
@@ -29,10 +56,10 @@ unsafe fn main() -> ! {
     let clock = &p.RCC;
     let rng = &p.RNG;
 
-     // Enable HSI as a stable clock source
-     clock.rcc_cr().modify(|_, w| w
-        .hseon().set_bit()
-        // .hsikeron().set_bit()
+    // Enable HSI as a stable clock source
+    clock.rcc_cr().modify(|_, w| w
+    .hseon().set_bit()
+    // .hsikeron().set_bit()
     );
     while clock.rcc_cr().read().hserdy().bit_is_clear() {
         asm::nop();
@@ -91,45 +118,34 @@ unsafe fn main() -> ! {
     // Reset PKA before enabling (sometimes helps with initialization)
     pka.pka_cr().modify(|_, w| w.en().clear_bit());
     for _ in 0..10 {
-        asm::nop(); // Small delay
+        asm::nop();
     }
 
     // Enable PKA peripheral
     pka.pka_cr().write(|w| w
         .en().set_bit()
-        .mode().bits(0x0E)  // Modular addition mode
+        // .mode().bits(0x10)
     );
 
     // Read back and print the value of EN bit
     // info!("PKA enabled: {}", pka.pka_cr().read().en().bit_is_set());
  
     // Wait for PKA to initialize
-    // info!("INITOK bit set: {:?}", pka.pka_sr().read().initok().bit_is_set());
     while pka.pka_sr().read().initok().bit_is_clear() {
         asm::nop();
     }
     info!("PKA initialized successfully!");
 
-    // PKA RAM base address
-    let pka_base = &p.PKA as *const _ as u32;
-    let pka_ram_base = pka_base + PKA_RAM_OFFSET;
-    // Access PKA RAM as 32-bit words
-    let pka_ram = pka_ram_base as *mut u32;
-    
-    info!("PKA peripheral base address: {:#08x}", pka_base);
-    info!("PKA RAM base address: {:#08x}", pka_ram_base);
-    
-    // Calculate correct offsets in 32-bit words (divide by 4 instead of 8)
-    let length_addr = pka_ram.wrapping_add((OPERAND_LENGTH_OFFSET / 4) as usize);
-    let a_addr = pka_ram.wrapping_add((OPERAND_A_OFFSET / 4) as usize);
-    let b_addr = pka_ram.wrapping_add((OPERAND_B_OFFSET / 4) as usize);
-    let modulus_addr = pka_ram.wrapping_add((MODULUS_OFFSET / 4) as usize);
-    let result_addr = pka_ram.wrapping_add((RESULT_OFFSET / 4) as usize);
+    let length_addr = BASE + OPERAND_LENGTH_OFFSET as usize;
+    let operand_a_addr = BASE + OPERAND_A_OFFSET as usize;
+    let operand_b_addr = BASE + OPERAND_B_OFFSET as usize;
+    let modulus_addr = BASE + MODULUS_OFFSET as usize;
+    let result_addr = BASE + RESULT_OFFSET as usize;
 
     // // Debug to verify addresses
     // info!("Operand Length address: {:#08x}", length_addr as u32);
-    // info!("Operand A address: {:#08x}", a_addr as u32);
-    // info!("Operand B address: {:#08x}", b_addr as u32);
+    // info!("Operand A address: {:#08x}", operand_a_addr as u32);
+    // info!("Operand B address: {:#08x}", operand_b_addr as u32);
     // info!("Modulus address: {:#08x}", modulus_addr as u32);
 
     // Clear any previous error flags
@@ -141,28 +157,31 @@ unsafe fn main() -> ! {
 
 
     // Write the values - using 32-bit words
-    info!("Writing operand length...");
-    core::ptr::write_volatile(length_addr, OPERAND_LENGTH);
-    
-    info!("Writing operand A...");
-    core::ptr::write_volatile(a_addr, A);
-    core::ptr::write_volatile(a_addr.add(1), 0); // Additional zero word
-    
-    info!("Writing operand B...");
-    core::ptr::write_volatile(b_addr, B);
-    core::ptr::write_volatile(b_addr.add(1), 0); // Additional zero word
-    
-    info!("Writing modulus...");
-    core::ptr::write_volatile(modulus_addr, N);
-    core::ptr::write_volatile(modulus_addr.add(1), 0); // Additional zero word
+    write_ram(length_addr, &[OPERAND_LENGTH]);
+    write_ram(operand_a_addr, &[A]);
+    write_ram(operand_a_addr + 4, &[0]); // Additional zero word 4 bytes = 32 bits = 1 word 
+    write_ram(operand_b_addr, &[B]);
+    write_ram(operand_b_addr + 4, &[0]); // Additional zero word
+    write_ram(modulus_addr, &[N]);
+    write_ram(modulus_addr + 4, &[0]); 
 
-    info!("Data loaded");
-    info!("ADDRERRF is clear: {}", pka.pka_sr().read().addrerrf().bit_is_clear());
+    // // Check the values 
+    // let mut buf = [032; 1];
+    // read_ram(length_addr, &mut buf);
+    // info!("length: {:?}", buf[0]);
+    // read_ram(operand_a_addr, &mut buf);
+    // info!("operand_a: {:?}", buf[0]);
+    // read_ram(operand_b_addr, &mut buf);
+    // info!("operand_b: {:?}", buf[0]);
+    // read_ram(modulus_addr, &mut buf);
+    // info!("modulus: {:?}", buf[0]);
+    // read_ram(result_addr, &mut buf);
+    // info!("result: {:?}", buf[0]);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
     pka.pka_cr().modify(|_, w| w
-        .mode().bits(0x0E)  // Modular addition mode
+        .mode().bits(0x0E)
         .start().set_bit()  // Start the operation
     );
 
@@ -172,10 +191,13 @@ unsafe fn main() -> ! {
         asm::nop();
     }
     info!("Operation complete!");
+    // info!("ADDRERRF is clear: {}", pka.pka_sr().read().addrerrf().bit_is_clear());
+    // info!("RAMERREF is clear: {}", pka.pka_sr().read().ramerrf().bit_is_clear());
 
     // Read the result
-    let result = core::ptr::read_volatile(result_addr);
-    info!("Modular Addition: {} + {} (mod {}) = {}", A, B, N, result);
+    let mut result = [0u32; 1];
+    read_ram(result_addr, &mut result);
+    info!("Operation: {} * {} (mod {}) = {}", A, B, N, result[0]);
     
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());

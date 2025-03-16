@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# stm32-metapac = "16.0.0"
+# stm32-metapac = { version = "16.0.0", features = ["metadata"] }
 
 # embassy dependencies
 embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", package = "embassy-stm32", branch = "main", features = ["defmt", "stm32wba55cg", "time-driver-any", "memory-x", "exti"] }
