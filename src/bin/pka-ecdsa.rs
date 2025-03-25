@@ -8,7 +8,6 @@ use {defmt_rtt as _, panic_probe as _};
 use cortex_m_rt::entry;
 use cortex_m::asm;
 use defmt::info;
-// use stm32_metapac::{metadata, pka};
 use core::{
     mem::size_of,
     ptr::{read_volatile, write_volatile},
@@ -17,44 +16,65 @@ use core::{
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
-
+const MODE: u8 = 0x24;
 
 // PKA RAM locations for exponentiation
-const EXPONENT_LENGTH_OFFSET: u32 = 0x400;
-const OPERAND_LENGTH_OFFSET: u32 = 0x408;
-const OPERAND_A_OFFSET: u32 = 0xC68;
+const PRIME_LENGTH_OFFSET: u32 = 0x400;
+const MODULUS_LENGTH_OFFSET: u32 = 0x408;
+const COEF_A_SIGN_OFFSET: u32 = 0x410;
+const COEF_A_OFFSET: u32 = 0x418;
+const COEF_B_OFFSET: u32 = 0x520;
 const MODULUS_OFFSET: u32 = 0x1088;
-const EXPONENT_E_OFFSET: u32 = 0xE78;
-const RESULT_OFFSET: u32 = 0x838;
-const MODE: u8 = 0x0;
+const SCALAR_OFFSET: u32 = 0x12A0;
+const POINT_X_OFFSET: u32 = 0x578;
+const POINT_Y_OFFSET: u32 = 0x470;
+const HASH_OFFSET: u32 = 0xFE8;
+const PRIVATE_KEY_OFFSET: u32 = 0xF28;
+const PRIME_OFFSET: u32 = 0xF88;
+const SIG_R_OFFSET: u32 = 0x730;
+const SIG_S_OFFSET: u32 = 0x788;
+const RESULT_ERROR_OFFSET: u32 = 0xFE0;
 
+const A_SIGN: u32 = 0x1;
+const A: [u32; 8] = [
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 
+    0x00000000, 0x00000000, 0x00000000, 0x00000003,
+];
 const N: [u32; 8] = [
     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
     0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
 ];
 
-
-const A: [u32; 8] = [
-    0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
-    0x00000000, 0xffffffff, 0xffffffff, 0xfffffffe,
+const B: [u32; 8] = [
+    0x5ac635d8, 0xaa3a93e7, 0xb3ebbd55, 0x769886bc,
+    0x651d06b0, 0xcc53b0f6, 0x3bce3c3e, 0x27d2604b
 ];
 
-const E: [u32; 8] = [
-    0x00000000, 0x00000000, 0x00000000, 0x00000000,
-    0x00000000, 0x00000000, 0x00000000, 0x00000002,
+const BASE_POINT_X: [u32; 8] = [
+    0x6b17d1f2, 0xe12c4247, 0xf8bce6e5, 0x63a440f2, 
+    0x77037d81, 0x2deb33a0, 0xf4a13945, 0xd898c296,
 ];
+
+const BASE_POINT_Y: [u32; 8] = [
+    0x4fe342e2, 0xfe1a7f9b, 0x8ee7eb4a, 0x7c0f9e16, 
+    0x2bce3357, 0x6b315ece, 0xcbb64068, 0x37bf51f5,
+];
+
+const PRIME_ORDER: [u32; 8] = [
+    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 
+    0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
+];
+
+const SCALAR: u32 = 0x1;
+
+// const R2MODN: [u32; 8] = [
+//     0x00000002, 0x00000000, 0xFFFFFFFA, 0x00000004, 
+//     0xFFFFFFFB, 0xFFFFFFFF, 0x00000008, 0xFFFFFFFC
+// ];
 
 const OPERAND_LENGTH: u32 = 8 * 32;
-const EXPONENT_LENGTH: u32 = 8 * 32;
 const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;   
 
-// const A: [u32; 1] = [0x2];               
-// const E: [u32; 1] = [0x9];            
-// const N: [u32; 1] = [0xD];
-// const R2MODN: [u32; 1] = [0x9];
-// const OPERAND_LENGTH: u32 = 4; 
-// const EXPONENT_LENGTH: u32 = 4; 
-// const WORD_LENGTH: usize = 1;  
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
@@ -102,10 +122,9 @@ unsafe fn main() -> ! {
     rng.rng_cr().write(|w| w
         .rngen().clear_bit()
         .condrst().set_bit()
-        .configlock().clear_bit()
-        // .clkdiv().b_0x0()    
-        .nistc().clear_bit()   // Hardware default values for NIST compliant RNG
-        .ced().clear_bit()     // Clock error detection enabled
+        .configlock().clear_bit() 
+        .nistc().clear_bit()   
+        .ced().clear_bit() 
     );
 
     // First clear CONDRST while keeping RNGEN disabled
@@ -125,7 +144,6 @@ unsafe fn main() -> ! {
     info!("RNG enabled successfully");
 
     // Enable PKA peripheral clock via RCC_AHB2ENR register
-    // PKA peripheral is located on AHB2
     clock.rcc_ahb2enr().modify(|_, w| w.pkaen().set_bit());
 
     // Reset PKA before enabling (sometimes helps with initialization)
@@ -146,12 +164,21 @@ unsafe fn main() -> ! {
     }
     info!("PKA initialized successfully!");
 
-    let length_addr = BASE + OPERAND_LENGTH_OFFSET as usize;
-    let exponent_length_addr = BASE + EXPONENT_LENGTH_OFFSET as usize;
-    let operand_a_addr = BASE + OPERAND_A_OFFSET as usize;
-    let exponent_addr = BASE + EXPONENT_E_OFFSET as usize;
+    let prime_length_addr = BASE + PRIME_LENGTH_OFFSET as usize;
+    let modulus_length_addr = BASE + MODULUS_LENGTH_OFFSET as usize;
+    let coef_a_sign_addr = BASE + COEF_A_SIGN_OFFSET as usize;
+    let coef_a_addr = BASE + COEF_A_OFFSET as usize;
+    let coef_b_addr = BASE + COEF_B_OFFSET as usize;
     let modulus_addr = BASE + MODULUS_OFFSET as usize;
-    let result_addr = BASE + RESULT_OFFSET as usize;
+    let prime_addr = BASE + PRIME_OFFSET as usize;
+    let sig_r_addr = BASE + SIG_R_OFFSET as usize;
+    let sig_s_addr = BASE + SIG_S_OFFSET as usize;
+    let point_x_addr = BASE + POINT_X_OFFSET as usize;
+    let point_y_addr = BASE + POINT_Y_OFFSET as usize;
+    let hash_addr = BASE + HASH_OFFSET as usize;
+    let priv_key_addr = BASE + PRIVATE_KEY_OFFSET as usize;
+    let scalar_addr = BASE + SCALAR_OFFSET as usize;
+    let error_addr = BASE + RESULT_ERROR_OFFSET as usize;
 
     // Clear any previous error flags
     pka.pka_clrfr().write(|w| w
@@ -162,24 +189,38 @@ unsafe fn main() -> ! {
 
 
     // Write the values - using 32-bit words
-    write_ram(length_addr, &[OPERAND_LENGTH]);
-    write_ram(exponent_length_addr, &[EXPONENT_LENGTH]);
+    write_ram(modulus_length_addr, &[OPERAND_LENGTH]);
+    write_ram(prime_length_addr, &[OPERAND_LENGTH]);
+    write_ram(scalar_addr, &[SCALAR]);
 
-    write_ram(operand_a_addr, &A);
-    write_ram(operand_a_addr + 4, &[0]); // Additional zero word 4 bytes = 32 bits = 1 word 
-    write_ram(exponent_addr, &E);
-    write_ram(exponent_addr + 4, &[0]); // Additional zero word
+    write_ram(coef_a_sign_addr, &[A_SIGN]);
+    write_ram(coef_a_addr, &A);
+    write_ram(coef_a_addr + 4, &[0]);
+    write_ram(coef_b_addr, &B);
+    write_ram(coef_b_addr + 4, &[0]); 
     write_ram(modulus_addr, &N);
-    write_ram(modulus_addr + 4, &[0]); 
+    write_ram(modulus_addr + 4, &[0]);
+    write_ram(prime_addr, &PRIME_ORDER);
+    write_ram(prime_addr + 4, &[0]);  
+    write_ram(point_x_addr, &BASE_POINT_X);
+    write_ram(point_x_addr + 4, &[0]); 
+    write_ram(point_y_addr, &BASE_POINT_Y);
+    write_ram(point_y_addr + 4, &[0]);
 
-    // Check the values 
-    let mut buf = [032; WORD_LENGTH];
-    read_ram(operand_a_addr, &mut buf);
-    info!("base: {:#X}", buf);
-    read_ram(exponent_addr, &mut buf);
-    info!("exponent: {:#X}", buf);
-    read_ram(modulus_addr, &mut buf);
-    info!("modulus: {:#X}", buf);
+    // // Check the values 
+    // let mut buf = [032; WORD_LENGTH];
+    // read_ram(coef_a_addr, &mut buf);
+    // info!("A: {:#X}", buf);
+    // read_ram(coef_b_addr, &mut buf);
+    // info!("B: {:#X}", buf);
+    // read_ram(modulus_addr, &mut buf);
+    // info!("modulus: {:#X}", buf);
+    // read_ram(prime_addr, &mut buf);
+    // info!("curve prime: {:#X}", buf);
+    // read_ram(point_x_addr, &mut buf);
+    // info!("POINT_X: {:#X}", buf);
+    // read_ram(point_y_addr, &mut buf);
+    // info!("POINT_Y: {:#X}", buf);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
@@ -196,9 +237,25 @@ unsafe fn main() -> ! {
     info!("Operation complete!");
 
     // Read the result
-    let mut result = [0u32; WORD_LENGTH];
-    read_ram(result_addr, &mut result);
-    info!("Operation: {:#X} ^ {:#X} (mod {:#X}) = {:#X}", A, E, N, result);
+    let mut result = [0u32; 1];
+    read_ram(error_addr, &mut result);
+    if result[0] == 0xD60D {
+        info!("No errors");
+        let mut sign_r = [0u32; 8];
+        let mut sign_s = [0u32; 8];
+        read_ram(sig_r_addr, &mut sign_r);
+        read_ram(sig_s_addr, &mut sign_s);
+        info!("SIGNATURE (R, S): ({:#X}, {:#X})", sign_r, sign_s);
+    }
+    if result[0] == 0xCBC9 {
+        info!("Error in computation");
+    }
+    if result[0] == 0xA3B7 {
+        info!("signature part r is zero");
+    }
+    if result[0] == 0xF946 {
+        info!("signature part s is zero");
+    }
     
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
