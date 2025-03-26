@@ -15,15 +15,16 @@ use core::{
 };
 
 const BASE: usize = 0x520C_2000;
-// const PKA_RAM_OFFSET: usize = 0x400; 
-// const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
+const PKA_RAM_OFFSET: usize = 0x400; 
+const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
+const RAM_NUM_DW: usize = 667;
 
 // PKA RAM locations
-const OPERAND_LENGTH_OFFSET: u32 = 0x408 ;
-const OPERAND_A_OFFSET: u32 = 0xA50;
-const OPERAND_B_OFFSET: u32 = 0xC68;
-const MODULUS_OFFSET: u32 = 0x1088;
-const RESULT_OFFSET: u32 = 0xE78;
+const OPERAND_LENGTH_OFFSET: usize = BASE +  0x408 ;
+const OPERAND_A_OFFSET: usize = BASE +  0xA50;
+const OPERAND_B_OFFSET: usize = BASE +  0xC68;
+const MODULUS_OFFSET: usize = BASE +  0x1088;
+const RESULT_OFFSET: usize = BASE +  0xE78;
 const MODE: u8 = 0xE;
 
 const N: [u32; 8] = [
@@ -154,18 +155,6 @@ unsafe fn main() -> ! {
     }
     info!("PKA initialized successfully!");
 
-    let length_addr = BASE + OPERAND_LENGTH_OFFSET as usize;
-    let operand_a_addr = BASE + OPERAND_A_OFFSET as usize;
-    let operand_b_addr = BASE + OPERAND_B_OFFSET as usize;
-    let modulus_addr = BASE + MODULUS_OFFSET as usize;
-    let result_addr = BASE + RESULT_OFFSET as usize;
-
-    // // Debug to verify addresses
-    // info!("Operand Length address: {:#08x}", length_addr as u32);
-    // info!("Operand A address: {:#08x}", operand_a_addr as u32);
-    // info!("Operand B address: {:#08x}", operand_b_addr as u32);
-    // info!("Modulus address: {:#08x}", modulus_addr as u32);
-
     // Clear any previous error flags
     pka.pka_clrfr().write(|w| w
         .addrerrfc().set_bit()
@@ -175,16 +164,13 @@ unsafe fn main() -> ! {
 
 
     // Write the values - using 32-bit words
-    write_ram(length_addr, &[OPERAND_LENGTH]);
-    write_ram(operand_a_addr, &A);
-    // write_ram(operand_a_addr + 4, &[0]); // Additional zero word 4 bytes = 32 bits = 1 word 
-    write_ram(modulus_addr + (WORD_LENGTH + 1)*4, &[0]); 
-    write_ram(operand_b_addr, &B);
-    // write_ram(operand_b_addr + 4, &[0]); // Additional zero word
-    write_ram(modulus_addr + (WORD_LENGTH + 1)*4, &[0]);
-    write_ram(modulus_addr, &N);
-    // write_ram(modulus_addr + 4, &[0]); 
-    write_ram(modulus_addr + (WORD_LENGTH + 1)*4, &[0]);
+    write_ram(OPERAND_LENGTH_OFFSET, &[OPERAND_LENGTH]);
+    write_ram(OPERAND_A_OFFSET, &A);
+    write_ram(OPERAND_A_OFFSET + (WORD_LENGTH + 1)*4, &[0]); 
+    write_ram(OPERAND_B_OFFSET, &B);
+    write_ram(OPERAND_B_OFFSET + (WORD_LENGTH + 1)*4, &[0]);
+    write_ram(MODULUS_OFFSET, &N);
+    write_ram(MODULUS_OFFSET + (WORD_LENGTH + 1)*4, &[0]);
 
     // Check the values 
     // let mut buf = [0u32; 8];
@@ -217,7 +203,7 @@ unsafe fn main() -> ! {
 
     // Read the result
     let mut result = [0u32; 8];
-    read_ram(result_addr, &mut result);
+    read_ram(RESULT_OFFSET, &mut result);
     info!("Operation: {:#X} + {:#X} (mod {:#X}) = {:#X}", A, B, N, result);
     info!("Result: {:#X}", result);
     

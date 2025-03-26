@@ -3,6 +3,10 @@ name = "stm32wba55cg"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["defmt"]
+defmt = []
+
 [dependencies]
 # stm32-metapac = { version = "16.0.0", features = ["metadata"] }
 

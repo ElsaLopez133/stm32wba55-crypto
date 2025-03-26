@@ -16,18 +16,19 @@ use core::{
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
+const RAM_NUM_DW: usize = 667;
 const MODE: u8 = 0x28;
 
 // PKA RAM locations for exponentiation
-const MODULUS_LENGTH_OFFSET: u32 = 0x408;
-const COEF_A_SIGN_OFFSET: u32 = 0x410;
-const COEF_A_OFFSET: u32 = 0x418;
-const COEF_B_OFFSET: u32 = 0x520;
-const MODULUS_OFFSET: u32 = 0x470;
-const POINT_X_OFFSET: u32 = 0x578;
-const POINT_Y_OFFSET: u32 = 0x5D0;
-const MONTGOMERY_OFFSET: u32 = 0x4C8;
-const RESULT_OFFSET: u32 = 0x680;
+const MODULUS_LENGTH_OFFSET: usize = BASE + 0x408;
+const COEF_A_SIGN_OFFSET: usize = BASE + 0x410;
+const COEF_A_OFFSET: usize = BASE + 0x418;
+const COEF_B_OFFSET: usize = BASE + 0x520;
+const MODULUS_OFFSET: usize = BASE + 0x470;
+const POINT_X_OFFSET: usize = BASE + 0x578;
+const POINT_Y_OFFSET: usize = BASE + 0x5D0;
+const MONTGOMERY_OFFSET: usize = BASE + 0x4C8;
+const RESULT_OFFSET: usize = BASE + 0x680;
 
 const A_SIGN: u32 = 0x1;
 const A: [u32; 8] = [
@@ -65,36 +66,6 @@ const R2MODN: [u32; 8] = [
     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
     0xFFFFFFFE, 0x3, 0x5, 0x2
 ];
-
-// const N: [u32; 8] = [
-//     0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000,
-//     0x00000000, 0x00000000, 0x00000001, 0xFFFFFFFF,
-// ];
-
-// const B: [u32; 8] = [
-//     0x27D2604B, 0x3BCE3C3E, 0xCC53B0F6, 0x651D06B0,
-//     0x769886BC, 0xB3EBBD55, 0xAA3A93E7, 0x5AC635D8
-// ];
-
-// const A: [u32; 8] = [
-//     0xFFFFFFFC, 0x00000001, 0x00000000, 0x00000000,
-//     0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
-// ];
-
-// static POINT_X: [u32; 8] = [
-//     0x6B17D1F2, 0xE12C4247, 0xF8BCE6E5, 0x63A440F2,
-//     0x77037D81, 0x2DEB33A0, 0xF4A13945, 0xD898C296,
-// ];
-
-// static POINT_Y: [u32; 8] = [
-//     0x4FE342E2, 0xFE1A7F9B, 0x8EE7EB4A, 0x7C0F9E16,
-//     0x2BCE3357, 0x6B315ECE, 0xCBB64068, 0x37BF51F5
-// ];
-
-// const R2MODN: [u32; 8] = [
-//     0x00000002, 0x00000000, 0xFFFFFFFA, 0x00000004, 
-//     0xFFFFFFFB, 0xFFFFFFFF, 0x00000008, 0xFFFFFFFC
-// ];
 
 const OPERAND_LENGTH: u32 = 8 * 32;
 const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;   
@@ -188,16 +159,6 @@ unsafe fn main() -> ! {
     }
     info!("PKA initialized successfully!");
 
-    let modulus_length_addr = BASE + MODULUS_LENGTH_OFFSET as usize;
-    let coef_a_sign_addr = BASE + COEF_A_SIGN_OFFSET as usize;
-    let coef_a_addr = BASE + COEF_A_OFFSET as usize;
-    let coef_b_addr = BASE + COEF_B_OFFSET as usize;
-    let modulus_addr = BASE + MODULUS_OFFSET as usize;
-    let result_addr = BASE + RESULT_OFFSET as usize;
-    let point_x_addr = BASE + POINT_X_OFFSET as usize;
-    let point_y_addr = BASE + POINT_Y_OFFSET as usize;
-    let montgomery_addr = BASE + MONTGOMERY_OFFSET as usize;
-
     // Clear any previous error flags
     pka.pka_clrfr().write(|w| w
         .addrerrfc().set_bit()
@@ -207,33 +168,33 @@ unsafe fn main() -> ! {
 
 
     // Write the values - using 32-bit words
-    write_ram(modulus_length_addr, &[OPERAND_LENGTH]);
-    write_ram(coef_a_sign_addr, &[A_SIGN]);
+    write_ram(MODULUS_LENGTH_OFFSET, &[OPERAND_LENGTH]);
+    write_ram(COEF_A_SIGN_OFFSET, &[A_SIGN]);
     
-    write_ram(coef_a_addr, &A);
-    write_ram(coef_a_addr + 4, &[0]);
-    write_ram(coef_b_addr, &B);
-    write_ram(coef_b_addr + 4, &[0]); 
-    write_ram(modulus_addr, &N);
-    write_ram(modulus_addr + 4, &[0]); 
-    write_ram(point_x_addr, &BASE_POINT_X);
-    write_ram(point_x_addr + 4, &[0]); 
-    write_ram(point_y_addr, &BASE_POINT_Y);
-    write_ram(point_y_addr + 4, &[0]); 
+    write_ram(COEF_A_OFFSET, &A);
+    write_ram(COEF_A_OFFSET + 4, &[0]);
+    write_ram(COEF_B_OFFSET, &B);
+    write_ram(COEF_B_OFFSET + 4, &[0]); 
+    write_ram(MODULUS_OFFSET, &N);
+    write_ram(MODULUS_OFFSET + 4, &[0]); 
+    write_ram(POINT_X_OFFSET, &BASE_POINT_X);
+    write_ram(POINT_X_OFFSET + 4, &[0]); 
+    write_ram(POINT_Y_OFFSET, &BASE_POINT_Y);
+    write_ram(POINT_Y_OFFSET + 4, &[0]); 
     // write_ram(montgomery_addr, &R2MODN);
     // write_ram(montgomery_addr + 4, &[0]); 
 
     // Check the values 
     let mut buf = [032; WORD_LENGTH];
-    read_ram(coef_a_addr, &mut buf);
+    read_ram(COEF_A_OFFSET, &mut buf);
     info!("A: {:#X}", buf);
-    read_ram(coef_b_addr, &mut buf);
+    read_ram(COEF_B_OFFSET, &mut buf);
     info!("B: {:#X}", buf);
-    read_ram(modulus_addr, &mut buf);
+    read_ram(MODULUS_OFFSET, &mut buf);
     info!("modulus: {:#X}", buf);
-    read_ram(point_x_addr, &mut buf);
+    read_ram(POINT_X_OFFSET, &mut buf);
     info!("POINT_X: {:#X}", buf);
-    read_ram(point_y_addr, &mut buf);
+    read_ram(POINT_Y_OFFSET, &mut buf);
     info!("POINT_Y: {:#X}", buf);
 
     // Configure PKA operation mode and start
@@ -252,7 +213,7 @@ unsafe fn main() -> ! {
 
     // Read the result
     let mut result = [0u32; 1];
-    read_ram(result_addr, &mut result);
+    read_ram(RESULT_OFFSET, &mut result);
     if result[0] == 0xD60D {
         info!("Point on curve ({:#X})", result);
     } 

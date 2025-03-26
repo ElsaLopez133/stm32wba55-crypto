@@ -13,25 +13,26 @@ use core::{
     ptr::{read_volatile, write_volatile},
 };
 
+const MODE: u8 = 0x20;
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
-const MODE: u8 = 0x20;
+const RAM_NUM_DW: usize = 667;
 
 // PKA RAM locations for exponentiation
-const PRIME_LENGTH_OFFSET: u32 = 0x400;
-const MODULUS_LENGTH_OFFSET: u32 = 0x408;
-const COEF_A_SIGN_OFFSET: u32 = 0x410;
-const COEF_A_OFFSET: u32 = 0x418;
-const COEF_B_OFFSET: u32 = 0x520;
-const MODULUS_OFFSET: u32 = 0x1088;
-const SCALAR_OFFSET: u32 = 0x12A0;
-const POINT_X_OFFSET: u32 = 0x578;
-const POINT_Y_OFFSET: u32 = 0x470;
-const PRIME_OFFSET: u32 = 0xF88;
-const RESULT_X_OFFSET: u32 = 0x578;
-const RESULT_Y_OFFSET: u32 = 0x5D0;
-const RESULT_ERROR_OFFSET: u32 = 0x680;
+const PRIME_LENGTH_OFFSET: usize = BASE + 0x400;
+const MODULUS_LENGTH_OFFSET: usize = BASE + 0x408;
+const COEF_A_SIGN_OFFSET: usize = BASE + 0x410;
+const COEF_A_OFFSET: usize = BASE + 0x418;
+const COEF_B_OFFSET: usize = BASE + 0x520;
+const MODULUS_OFFSET: usize = BASE + 0x1088;
+const SCALAR_OFFSET: usize = BASE + 0x12A0;
+const POINT_X_OFFSET: usize = BASE + 0x578;
+const POINT_Y_OFFSET: usize = BASE + 0x470;
+const PRIME_OFFSET: usize = BASE + 0xF88;
+const RESULT_X_OFFSET: usize = BASE + 0x578;
+const RESULT_Y_OFFSET: usize = BASE + 0x5D0;
+const RESULT_ERROR_OFFSET: usize = BASE + 0x680;
 
 const A_SIGN: u32 = 0x1;
 const A: [u32; 8] = [
@@ -162,20 +163,6 @@ unsafe fn main() -> ! {
     }
     info!("PKA initialized successfully!");
 
-    let prime_length_addr = BASE + PRIME_LENGTH_OFFSET as usize;
-    let modulus_length_addr = BASE + MODULUS_LENGTH_OFFSET as usize;
-    let coef_a_sign_addr = BASE + COEF_A_SIGN_OFFSET as usize;
-    let coef_a_addr = BASE + COEF_A_OFFSET as usize;
-    let coef_b_addr = BASE + COEF_B_OFFSET as usize;
-    let modulus_addr = BASE + MODULUS_OFFSET as usize;
-    let prime_addr = BASE + PRIME_OFFSET as usize;
-    let result_x_addr = BASE + RESULT_X_OFFSET as usize;
-    let result_y_addr = BASE + RESULT_Y_OFFSET as usize;
-    let point_x_addr = BASE + POINT_X_OFFSET as usize;
-    let point_y_addr = BASE + POINT_Y_OFFSET as usize;
-    let scalar_addr = BASE + SCALAR_OFFSET as usize;
-    let error_addr = BASE + RESULT_ERROR_OFFSET as usize;
-
     // Clear any previous error flags
     pka.pka_clrfr().write(|w| w
         .addrerrfc().set_bit()
@@ -185,24 +172,24 @@ unsafe fn main() -> ! {
 
 
     // Write the values - using 32-bit words
-    write_ram(modulus_length_addr, &[OPERAND_LENGTH]);
-    write_ram(prime_length_addr, &[OPERAND_LENGTH]);
-    write_ram(coef_a_sign_addr, &[A_SIGN]);
+    write_ram(MODULUS_LENGTH_OFFSET, &[OPERAND_LENGTH]);
+    write_ram(PRIME_LENGTH_OFFSET, &[OPERAND_LENGTH]);
+    write_ram(COEF_A_SIGN_OFFSET, &[A_SIGN]);
 
-    write_ram(coef_a_addr, &A);
-    write_ram(coef_a_addr + 4, &[0]);
-    write_ram(coef_b_addr, &B);
-    write_ram(coef_b_addr + 4, &[0]); 
-    write_ram(modulus_addr, &N);
-    write_ram(modulus_addr + 4, &[0]);
-    write_ram(prime_addr, &PRIME_ORDER);
-    write_ram(prime_addr + 4, &[0]);  
-    write_ram(point_x_addr, &BASE_POINT_X);
-    write_ram(point_x_addr + 4, &[0]); 
-    write_ram(point_y_addr, &BASE_POINT_Y);
-    write_ram(point_y_addr + 4, &[0]);
-    write_ram(scalar_addr, &SCALAR);
-    write_ram(scalar_addr + 4, &[0]);
+    write_ram(COEF_A_OFFSET, &A);
+    write_ram(COEF_A_OFFSET + 4, &[0]);
+    write_ram(COEF_B_OFFSET, &B);
+    write_ram(COEF_B_OFFSET + 4, &[0]); 
+    write_ram(MODULUS_OFFSET, &N);
+    write_ram(MODULUS_OFFSET + 4, &[0]);
+    write_ram(PRIME_OFFSET, &PRIME_ORDER);
+    write_ram(PRIME_OFFSET + 4, &[0]);  
+    write_ram(POINT_X_OFFSET, &BASE_POINT_X);
+    write_ram(POINT_X_OFFSET + 4, &[0]); 
+    write_ram(POINT_Y_OFFSET, &BASE_POINT_Y);
+    write_ram(POINT_Y_OFFSET + 4, &[0]);
+    write_ram(SCALAR_OFFSET, &SCALAR);
+    write_ram(SCALAR_OFFSET + 4, &[0]);
 
     // // Check the values 
     // let mut buf = [032; WORD_LENGTH];
@@ -235,13 +222,13 @@ unsafe fn main() -> ! {
 
     // Read the result
     let mut result = [0u32; 1];
-    read_ram(error_addr, &mut result);
+    read_ram(RESULT_ERROR_OFFSET, &mut result);
     if result[0] == 0xD60D {
         info!("No errors");
         let mut result_x = [0u32; 8];
         let mut result_y = [0u32; 8];
-        read_ram(result_x_addr, &mut result_x);
-        read_ram(result_y_addr, &mut result_y);
+        read_ram(RESULT_X_OFFSET, &mut result_x);
+        read_ram(RESULT_Y_OFFSET, &mut result_y);
         info!("POINT (X, Y): ({:#X}, {:#X})", result_x, result_y);
     }
     if result[0] == 0xCBC9 {

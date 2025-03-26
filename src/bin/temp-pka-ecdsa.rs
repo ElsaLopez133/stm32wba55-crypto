@@ -67,14 +67,8 @@ const PRIME_ORDER: [u32; 8] = [
 
 const SCALAR: u32 = 0x1;
 
-// const R2MODN: [u32; 8] = [
-//     0x00000002, 0x00000000, 0xFFFFFFFA, 0x00000004, 
-//     0xFFFFFFFB, 0xFFFFFFFF, 0x00000008, 0xFFFFFFFC
-// ];
-
 const OPERAND_LENGTH: u32 = 8 * 32;
 const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;   
-
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
