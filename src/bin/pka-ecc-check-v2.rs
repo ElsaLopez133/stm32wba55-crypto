@@ -14,19 +14,18 @@ use core::{
 };
 
 #[entry]
-fn main() -> ! {
+unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
     let pka = p.PKA;
     let rcc = &p.RCC;
     let rng = &p.RNG;
 
-    let mut pka = Pka::new(pka, rcc, rng);
+    let mut pka = Pka::new(pka, rcc, rng, PkaOpcode::Point);
     info!("PKA Initialized");
 
     let curve = curve::NIST_P256;
     let mut result: [u32; 8] = [0; 8];
     
-    // Perform ECDSA Signing using PKA
     match pka.ecc_check(&curve, &POINT_X, &POINT_Y, &mut result) {
         Ok(_) => {},
         Err(e) => {
@@ -71,61 +70,6 @@ impl Error {
     }
 }
 
-/// PKA operation codes.
-#[derive(Debug)]
-#[repr(u8)]
-#[allow(dead_code)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum PkaOpcode {
-    /// Montgomery parameter computation then modular exponentiation.
-    MontgomeryParameterExponentiation = 0b000000,
-    /// Montgomery parameter computation only.
-    MontgomeryParameter = 0b000001,
-    /// Modular exponentiation only (Montgomery parameter must be loaded first).
-    ModularExponentiation = 0b000010,
-    /// Montgomery parameter computation then ECC scalar multiplication.
-    MontgomeryParameterEcc = 0b100000,
-    /// ECC scalar multiplication only (Montgomery parameter must be loaded first).
-    EccScalar = 0b100010,
-    /// ECC complete addition.
-    EccAddition = 0b100011,
-    /// ECC complete addition.
-    EccLadder = 0b100111,
-    /// ECC projective to affine
-    EccProjectiveAffine = 0b101111,
-    /// ECDSA signing.
-    EcdsaSign = 0b100100,
-    /// ECDSA verification.
-    EcdsaVerify = 0b100110,
-    /// Point on elliptic curve Fp check.
-    Point = 0b101000,
-    /// RSA CRT exponentiation.
-    RsaCrt = 0b000111,
-    /// Modular inversion.
-    ModularInversion = 0b001000,
-    /// Arithmetic addition.
-    ArithmeticAdd = 0b001001,
-    /// Arithmetic subtraction.
-    ArithmeticSub = 0b001010,
-    /// Arithmetic multiplication.
-    ArithmeticMul = 0b001011,
-    /// Arithmetic comparison.
-    ArithmeticCmp = 0b001100,
-    /// Modular reduction.
-    ModularRed = 0b001101,
-    /// Modular addition.
-    ModularAdd = 0b001110,
-    /// Modular subtraction.
-    ModularSub = 0b001111,
-    /// Montgomery multiplication.
-    MontgomeryMul = 0b010000,
-}
-
-impl From<PkaOpcode> for u8 {
-    fn from(x: PkaOpcode) -> Self {
-        x as u8
-    }
-}
 
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
@@ -160,7 +104,7 @@ pub struct Pka {
 }
 
 impl Pka {
-    pub fn new(pka: stm32wba55::PKA, rcc: &stm32wba55::RCC, rng: &stm32wba55::RNG) -> Self {
+    unsafe fn new(pka: stm32wba55::PKA, rcc: &stm32wba55::RCC, rng: &stm32wba55::RNG, opcode: PkaOpcode) -> Self {
         // Enable HSE (External High-Speed Clock) as a stable clock source
         rcc.rcc_cr().modify(|_, w| w.hseon().set_bit());
         while rcc.rcc_cr().read().hserdy().bit_is_clear() {
@@ -208,8 +152,12 @@ impl Pka {
         }
 
         // Enable PKA peripheral
-        pka.pka_cr().modify(|_, w| w.en().set_bit());
-    
+        // pka.pka_cr().modify(|_, w| w.en().set_bit());
+        pka.pka_cr().write(|w| w
+            .en().set_bit()
+            .mode().bits(opcode as u8)
+        );
+
         // Wait for PKA to initialize
         while pka.pka_sr().read().initok().bit_is_clear() {
             asm::nop();
@@ -219,14 +167,7 @@ impl Pka {
         Self { pka }
     }
 
-    /// Returns `true` if the PKA is enabled.
-    #[inline]
-    pub fn is_enabled(&self) -> bool {
-        self.pka.pka_cr().read().en().bit_is_set()
-    }
-
-    #[inline]
-    fn clear_all_flags(&mut self) {
+    unsafe fn clear_all_flags(&mut self) {
         self.pka.pka_clrfr().write(|w| {
             w.addrerrfc().set_bit();
             w.ramerrfc().set_bit();
@@ -258,7 +199,14 @@ impl Pka {
 
     #[inline]
     unsafe fn start_process(&mut self, opcode: PkaOpcode) {
-        info!("Starting operation: {:?}", opcode);
+        // info!("Starting operation: {:?}", opcode);
+        // self.pka.pka_cr().modify(|_, w| w
+        //     .mode().bits(opcode as u8)
+        //     .start().set_bit()
+        //     .addrerrie().set_bit()
+        //     .ramerrie().set_bit()
+        //     .procendie().set_bit()
+        // );
         self.pka.pka_cr().write(|w| {
             w.addrerrie().set_bit();
             w.ramerrie().set_bit();
@@ -270,7 +218,7 @@ impl Pka {
 
     }
 
-    pub fn ecc_check<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
+    unsafe fn ecc_check<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
         &mut self,
         curve: &EllipticCurve<MODULUS_SIZE, PRIME_ORDER_SIZE, OPERAND_SIZE>,
         point_x: &[u32; MODULUS_SIZE],
@@ -282,7 +230,7 @@ impl Pka {
         self.ecc_check_result(result)
     }
 
-    pub fn ecc_check_start<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
+    unsafe fn ecc_check_start<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
         &mut self,
         curve: &EllipticCurve<MODULUS_SIZE, PRIME_ORDER_SIZE, OPERAND_SIZE>,
         point_x: &[u32; MODULUS_SIZE],
@@ -301,6 +249,21 @@ impl Pka {
             self.write_ram(POINT_Y_OFFSET, point_y);
         }
 
+        // // Check the values
+        // unsafe {
+        //     let mut buf = [032; MODULUS_SIZE];
+        //     self.read_ram(COEF_A_OFFSET, &mut buf);
+        //     info!("A: {:#X}", buf);
+        //     self.read_ram(COEF_B_OFFSET, &mut buf);
+        //     info!("B: {:#X}", buf);
+        //     self.read_ram(MODULUS_OFFSET, &mut buf);
+        //     info!("modulus: {:#X}", buf);
+        //     self.read_ram(POINT_X_OFFSET, &mut buf);
+        //     info!("POINT_X: {:#X}", buf);
+        //     self.read_ram(POINT_Y_OFFSET, &mut buf);
+        //     info!("POINT_Y: {:#X}", buf);
+        // }
+
         let sr = self.pka.pka_sr().read();
         if sr.addrerrf().bit_is_set() {
             self.clear_all_flags();
@@ -311,18 +274,13 @@ impl Pka {
         } else {
             unsafe {
                self.start_process(PkaOpcode::Point);
-                // // Wait for processing to complete - PROCENDF is 1 when done
-                // info!("Waiting for operation to complete...");
-                // while self.pka.pka_sr().read().procendf().bit_is_clear() {
-                //     asm::nop();
-                // } 
             }
             Ok(())
         }
         
     }
 
-    pub fn ecc_check_result<const MODULUS_SIZE: usize>(
+    unsafe fn ecc_check_result<const MODULUS_SIZE: usize>(
         &mut self,
         result: &mut [u32; MODULUS_SIZE],
     ) -> Result<(), Error> {
@@ -333,21 +291,23 @@ impl Pka {
         let sr = self.pka.pka_sr().read();
         if sr.addrerrf().bit_is_set() {
             self.clear_all_flags();
-            Err(Error::Address)
+            return Err(Error::Address)
         } else if sr.ramerrf().bit_is_set() {
             self.clear_all_flags();
-            Err(Error::Ram)
+            return Err(Error::Ram)
         } else if sr.procendf().bit_is_clear() {
-            Err(Error::Busy)
-        } else {
-            self.clear_all_flags();
-
-            unsafe {
-                self.read_ram(RESULT_OFFSET, result);
+            info!("Waiting for operation to complete...");
+            while sr.procendf().bit_is_clear() {
+                asm::nop();
             }
-
-            Ok(())
+            info!("Operation completed ({:?})", sr.procendf().bit_is_set() );
         }
+        self.clear_all_flags();
+
+        unsafe {
+            self.read_ram(RESULT_OFFSET, result);
+        }
+        Ok(())
     }
 }
 
@@ -444,4 +404,58 @@ pub mod curve {
     };
 }
 
+/// PKA operation codes.
+#[derive(Debug)]
+#[repr(u8)]
+#[allow(dead_code)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+enum PkaOpcode {
+    /// Montgomery parameter computation then modular exponentiation.
+    MontgomeryParameterExponentiation = 0b000000,
+    /// Montgomery parameter computation only.
+    MontgomeryParameter = 0b000001,
+    /// Modular exponentiation only (Montgomery parameter must be loaded first).
+    ModularExponentiation = 0b000010,
+    /// Montgomery parameter computation then ECC scalar multiplication.
+    MontgomeryParameterEcc = 0b100000,
+    /// ECC scalar multiplication only (Montgomery parameter must be loaded first).
+    EccScalar = 0b100010,
+    /// ECC complete addition.
+    EccAddition = 0b100011,
+    /// ECC complete addition.
+    EccLadder = 0b100111,
+    /// ECC projective to affine
+    EccProjectiveAffine = 0b101111,
+    /// ECDSA signing.
+    EcdsaSign = 0b100100,
+    /// ECDSA verification.
+    EcdsaVerify = 0b100110,
+    /// Point on elliptic curve Fp check.
+    Point = 0b101000,
+    /// RSA CRT exponentiation.
+    RsaCrt = 0b000111,
+    /// Modular inversion.
+    ModularInversion = 0b001000,
+    /// Arithmetic addition.
+    ArithmeticAdd = 0b001001,
+    /// Arithmetic subtraction.
+    ArithmeticSub = 0b001010,
+    /// Arithmetic multiplication.
+    ArithmeticMul = 0b001011,
+    /// Arithmetic comparison.
+    ArithmeticCmp = 0b001100,
+    /// Modular reduction.
+    ModularRed = 0b001101,
+    /// Modular addition.
+    ModularAdd = 0b001110,
+    /// Modular subtraction.
+    ModularSub = 0b001111,
+    /// Montgomery multiplication.
+    MontgomeryMul = 0b010000,
+}
 
+impl From<PkaOpcode> for u8 {
+    fn from(x: PkaOpcode) -> Self {
+        x as u8
+    }
+}

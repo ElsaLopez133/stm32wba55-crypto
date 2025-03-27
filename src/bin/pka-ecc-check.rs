@@ -184,18 +184,18 @@ unsafe fn main() -> ! {
     // write_ram(montgomery_addr, &R2MODN);
     // write_ram(montgomery_addr + 4, &[0]); 
 
-    // Check the values 
-    let mut buf = [032; WORD_LENGTH];
-    read_ram(COEF_A_OFFSET, &mut buf);
-    info!("A: {:#X}", buf);
-    read_ram(COEF_B_OFFSET, &mut buf);
-    info!("B: {:#X}", buf);
-    read_ram(MODULUS_OFFSET, &mut buf);
-    info!("modulus: {:#X}", buf);
-    read_ram(POINT_X_OFFSET, &mut buf);
-    info!("POINT_X: {:#X}", buf);
-    read_ram(POINT_Y_OFFSET, &mut buf);
-    info!("POINT_Y: {:#X}", buf);
+    // // Check the values 
+    // let mut buf = [032; WORD_LENGTH];
+    // read_ram(COEF_A_OFFSET, &mut buf);
+    // info!("A: {:#X}", buf);
+    // read_ram(COEF_B_OFFSET, &mut buf);
+    // info!("B: {:#X}", buf);
+    // read_ram(MODULUS_OFFSET, &mut buf);
+    // info!("modulus: {:#X}", buf);
+    // read_ram(POINT_X_OFFSET, &mut buf);
+    // info!("POINT_X: {:#X}", buf);
+    // read_ram(POINT_Y_OFFSET, &mut buf);
+    // info!("POINT_Y: {:#X}", buf);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
