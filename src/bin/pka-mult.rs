@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-
+// Test vectors: https://github.com/scogliani/ecc-test-vectors?tab=readme-ov-file
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
 use stm32wba::stm32wba55::{self};
 use {defmt_rtt as _, panic_probe as _};
@@ -79,7 +79,6 @@ unsafe fn main() -> ! {
         .rngen().clear_bit()
         .condrst().set_bit()
         .configlock().clear_bit()
-        // .clkdiv().b_0x0()    
         .nistc().clear_bit()   // Hardware default values for NIST compliant RNG
         .ced().clear_bit()     // Clock error detection enabled
     );
