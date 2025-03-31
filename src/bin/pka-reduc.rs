@@ -15,18 +15,15 @@ use core::{
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
-const MODE: u8 = 0x10;
-// const MODE: u8 = 0x0B;
+const MODE: u8 = 0x0d;
 const RAM_NUM_DW: usize = 667;
 
 // PKA RAM locations for multiplication
-const OPERAND_LENGTH_OFFSET: usize = BASE + 0x408 ;
+const OPERAND_LENGTH_OFFSET: usize = BASE + 0x400 ;
+const MODULUS_LENGTH_OFFSET: usize = BASE + 0x408 ;
 const OPERAND_A_OFFSET: usize = BASE + 0xA50;
-// const OPERAND_B_OFFSET: usize = BASE + 0xC68;
-const OPERAND_B_OFFSET: usize = BASE + 0xC74;
-const MODULUS_OFFSET: usize = BASE + 0x1088;
+const MODULUS_OFFSET: usize = BASE + 0xC68;
 const RESULT_OFFSET: usize = BASE + 0xE78;
-const MONTGOMERY_OFFSET: usize = BASE + 0x620;
 
 // Big endian. LS comes last
 // const N: [u32; 8] = [
@@ -45,30 +42,14 @@ const MONTGOMERY_OFFSET: usize = BASE + 0x620;
 //     0x00000000, 0x00000000
 // ];
 
-const R2MODN: [u32; 8] = [
-    0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
-    0xFFFFFFFE, 0x00000003, 0x00000005, 0x00000002
-];
-
 // const OPERAND_LENGTH: u32 = 8 * 32;
 // const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;    
 
-const A: [u32; 2] = [0xe0000000, 0xf0000000];               
-// const B: [u32; 4] = [0x1, 0x2, 0x4, 0x3];          
-const B: [u32; 2] = [0x0, 0x3];          
-const N: [u32; 2] = [0xf0000000, 0xd0000001];
-// const R2MODN: [u32; 1] = [0x30000000];   
+const A: [u32; 2] = [0xf000000f, 0x00000002];           
+const N: [u32; 2] = [0xf0000000, 0x00000001];
 const OPERAND_LENGTH: u32 = 2 * 32;
-const WORD_LENGTH: usize = 3; //(OPERAND_LENGTH as usize)/32;    
-
-// the least significant bit must be placed in bit 0 at address offset
-// unsafe fn write_ram(offset: usize, buf: &[u32]) {
-//     debug_assert_eq!(offset % 4, 0);
-//     debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
-//     buf.iter().rev().enumerate().for_each(|(idx, &dw)| {
-//         write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
-//     });
-// }
+const MODULUS_LENGTH: u32 = 2 * 32;
+const WORD_LENGTH: usize = 2; //(OPERAND_LENGTH as usize)/32;    
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
@@ -85,27 +66,15 @@ unsafe fn read_ram(offset: usize, buf: &mut [u32]) {
     debug_assert_eq!(offset % 4, 0);
     debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
     buf.iter_mut().rev().enumerate().for_each(|(idx, dw)| {
-        let addr = offset + idx * size_of::<u32>();
         *dw = read_volatile((offset + idx * size_of::<u32>()) as *const u32);
-        info!("Reading: Address {:#X}, Value {:#X}", addr, dw);
     });
 }
-
-// unsafe fn read_and_print_ram(offset: usize, buf: &mut [u32]) {
-//     read_ram(offset, buf);
-//     info!("Reading RAM from offset: {:#X}", offset);
-//     buf.iter().enumerate().for_each(|(idx, &dw)| {
-//         let addr = offset + idx * size_of::<u32>();
-//         info!("Address: {:#X}, Value: {:#X}", addr, dw);
-//     });
-// }
 
 unsafe fn zero_ram() {
     (0..RAM_NUM_DW)
         .into_iter()
         .for_each(|dw| unsafe { write_volatile((dw * 4 + RAM_BASE) as *mut u32, 0) });
 }
-
 
 #[entry]
 unsafe fn main() -> ! {
@@ -187,16 +156,13 @@ unsafe fn main() -> ! {
     // First compute AR = A x r2modn mod n
     zero_ram();
     write_ram(OPERAND_LENGTH_OFFSET, &[OPERAND_LENGTH]);
+    write_ram(MODULUS_LENGTH_OFFSET, &[MODULUS_LENGTH]);
     write_ram(OPERAND_A_OFFSET, &A);
-    write_ram(OPERAND_B_OFFSET, &B);
-    // write_ram(OPERAND_B_OFFSET_2, &B_2);
     write_ram(MODULUS_OFFSET, &N);
 
     // Check the values 
     let mut buf = [0u32; WORD_LENGTH + 3];
-    read_ram(OPERAND_B_OFFSET, &mut buf);
     read_ram(OPERAND_A_OFFSET, &mut buf);
-    // read_and_print_ram(OPERAND_B_OFFSET_2, &mut buf);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
@@ -222,42 +188,12 @@ unsafe fn main() -> ! {
     }
     
     // Read the result
-    let mut AR = [0u32; WORD_LENGTH ];
+    let mut AR = [0u32; WORD_LENGTH];
     read_ram(RESULT_OFFSET, &mut AR);
-    info!("AR = A({:#X}) * R2MODN({:#X}) (mod {:#X}) = {:#X}", A, B, N, AR);
+    info!("A({:#X}) reduced = A({:#X}) (mod {:#X})", A, AR, N,);
     
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
-
-    // // Compute AB= AR x B mod n
-    // zero_ram();
-    // write_ram(OPERAND_LENGTH_OFFSET, &[OPERAND_LENGTH]);
-    // write_ram(OPERAND_A_OFFSET, &AR);
-    // write_ram(OPERAND_B_OFFSET, &B);
-    // write_ram(MODULUS_OFFSET, &N);
-
-    // // Configure PKA operation mode and start
-    // info!("Starting PKA operation...");
-    // pka.pka_cr().modify(|_, w| w
-    //     .mode().bits(MODE)
-    //     .start().set_bit()  // Start the operation
-    // );
-
-    // // Wait for processing to complete - PROCENDF is 1 when done
-    // info!("Waiting for operation to complete...");
-    // while pka.pka_sr().read().procendf().bit_is_clear() {
-    //     asm::nop();
-    // }
-    // info!("Operation complete!");
-
-    // // Read the result
-    // let mut result = [0u32; WORD_LENGTH];
-    // read_ram(RESULT_OFFSET, &mut result);
-    // info!("AB = AR({:#X}) * B({:#X}) (mod {:#X}) = {:#X}", AR, B, N, result);
-    
-    // // Clear the completion flag
-    // pka.pka_clrfr().write(|w| w.procendfc().set_bit());
-
 
     loop {}
 }

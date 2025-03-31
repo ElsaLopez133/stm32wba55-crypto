@@ -17,11 +17,12 @@ use core::{
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
+const RAM_NUM_DW: usize = 667;
 
-const MODULUS_LENGTH_OFFSET: u32 = 0x408;
-const MODULUS_OFFSET: u32 = 0x1088;
-const RESULT_OFFSET: u32 = 0x620;
-const MODULUS_OFFSET_PREVIOUS_LAST: u32 = 0x1084;
+const MODULUS_LENGTH_OFFSET: usize = BASE + 0x408;
+const MODULUS_OFFSET: usize = BASE + 0x1088;
+const RESULT_OFFSET: usize = BASE + 0x620;
+const MODULUS_OFFSET_PREVIOUS_LAST: usize = BASE + 0x1084;
 
 // const N_LENGTH: u32 = 4;
 // const N: [u32; 1] = [0xD];
@@ -36,8 +37,8 @@ const R2MODN: [u32; 8] = [
     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
     0xFFFFFFFE, 0x3, 0x5, 0x2
 ];
-const ARRAY_NUM: usize = 8;
-const N_LENGTH: u32 = (ARRAY_NUM  as u32) * 32;
+const OPERAND_LENGTH: u32 = 8 * 32;
+const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32; 
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
@@ -55,6 +56,12 @@ unsafe fn read_ram(offset: usize, buf: &mut [u32]) {
     });
 }
 
+unsafe fn zero_ram() {
+    (0..RAM_NUM_DW)
+        .into_iter()
+        .for_each(|dw| unsafe { write_volatile((dw * 4 + RAM_BASE) as *mut u32, 0) });
+}
+
 
 #[entry]
 unsafe fn main() -> ! {
@@ -66,15 +73,13 @@ unsafe fn main() -> ! {
     // Enable HSI as a stable clock source
     clock.rcc_cr().modify(|_, w| w
     .hseon().set_bit()
-    // .hsikeron().set_bit()
     );
     while clock.rcc_cr().read().hserdy().bit_is_clear() {
         asm::nop();
     }
 
-    // Enable RNG clock. Select the source clock
+    // Enable RNG clock. Select the source clock. Select the AHB clock
     clock.rcc_ccipr2().write(|w| w.rngsel().b_0x2());
-    // Enable RNG clock. Select the AHB clock
     clock.rcc_ahb2enr().modify(|_, w| w.rngen().set_bit());
     while clock.rcc_ahb2enr().read().rngen().bit_is_clear() {
         asm::nop();
@@ -85,8 +90,7 @@ unsafe fn main() -> ! {
     rng.rng_cr().write(|w| w
         .rngen().clear_bit()
         .condrst().set_bit()
-        .configlock().clear_bit()
-        // .clkdiv().b_0x0()    
+        .configlock().clear_bit()  
         .nistc().clear_bit()   // Hardware default values for NIST compliant RNG
         .ced().clear_bit()     // Clock error detection enabled
     );
@@ -129,11 +133,6 @@ unsafe fn main() -> ! {
     }
     info!("PKA initialized successfully!");
 
-    let modulus_length_addr = BASE + MODULUS_LENGTH_OFFSET as usize;
-    let modulus_addr = BASE + MODULUS_OFFSET as usize;
-    let modulus_addr_previous_last = BASE + MODULUS_OFFSET_PREVIOUS_LAST as usize;
-    let result_addr = BASE + RESULT_OFFSET as usize;
-
     // Clear any previous error flags
     pka.pka_clrfr().write(|w| w
         .addrerrfc().set_bit()
@@ -142,13 +141,13 @@ unsafe fn main() -> ! {
     );
 
     // Write the values - using 32-bit words
-    write_ram(modulus_length_addr, &[N_LENGTH]);
-    write_ram(modulus_addr, &N);
-    write_ram(modulus_addr + (ARRAY_NUM + 1)*4, &[0]);
+    zero_ram();
+    write_ram(MODULUS_LENGTH_OFFSET, &[OPERAND_LENGTH]);
+    write_ram(MODULUS_OFFSET, &N);
     
     // Check the values 
-    let mut buf = [0u32; ARRAY_NUM];
-    read_ram(modulus_addr, &mut buf);
+    let mut buf = [0u32; WORD_LENGTH];
+    read_ram(MODULUS_OFFSET, &mut buf);
     info!("modulus: {:#X}", buf);
 
     // Configure PKA operation mode and start
@@ -166,8 +165,8 @@ unsafe fn main() -> ! {
     info!("Operation complete!");
 
     // Read the result
-    let mut result = [0u32; ARRAY_NUM];
-    read_ram(result_addr, &mut result);
+    let mut result = [0u32; WORD_LENGTH];
+    read_ram(RESULT_OFFSET, &mut result);
     info!("Montomery parameter for N: {:#X} is {:#X}", N, result);
     
     // Clear the completion flag
