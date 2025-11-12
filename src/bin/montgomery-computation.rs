@@ -29,16 +29,27 @@ const MODULUS_OFFSET_PREVIOUS_LAST: usize = BASE + 0x1084;
 // const ARRAY_NUM: usize = 1;
 
 // P-256 curve parameters. Big endian. The first values are the most significant
-const N: [u32; 8] = [
-    0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
-    0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
-];
-const R2MODN: [u32; 8] = [
-    0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
-    0xFFFFFFFE, 0x3, 0x5, 0x2
-];
+// const N: [u32; 8] = [
+//     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
+//     0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
+// ];
+
+// const R2MODN: [u32; 8] = [
+//     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
+//     0xFFFFFFFE, 0x3, 0x5, 0x2
+// ];
 const OPERAND_LENGTH: u32 = 8 * 32;
 const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32; 
+
+pub const N: [u32; 8] = [
+    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 
+    0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
+];
+
+pub const R2MODN: [u32; 8] = [
+    0x1C1F0858, 0xD0B168A4, 0x619076AB, 0x51D16BDB, 
+    0xDF119F1B, 0x30A9CDC7, 0x5706ACB0, 0x3AF42ABB
+];
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);

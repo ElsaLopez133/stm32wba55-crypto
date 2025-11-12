@@ -13,27 +13,24 @@ use core::{
     ptr::{read_volatile, write_volatile},
 };
 
-const MODE: u8 = 0x20;
+const MODE: u8 = 0x2F;
 const BASE: usize = 0x520C_2000;
 const PKA_RAM_OFFSET: usize = 0x400; 
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const RAM_NUM_DW: usize = 667;
 
-// PKA RAM locations for ECC multiplication
-const PRIME_LENGTH_OFFSET: usize = BASE + 0x400;
-const MODULUS_LENGTH_OFFSET: usize = BASE + 0x408;
-const COEF_A_SIGN_OFFSET: usize = BASE + 0x410;
-const COEF_A_OFFSET: usize = BASE + 0x418;
-const COEF_B_OFFSET: usize = BASE + 0x520;
-const MODULUS_OFFSET: usize = BASE + 0x1088;
-const SCALAR_OFFSET: usize = BASE + 0x12A0;
-const POINT_X_OFFSET: usize = BASE + 0x578;
-const POINT_Y_OFFSET: usize = BASE + 0x470;
-const PRIME_OFFSET: usize = BASE + 0xF88;
+// PKA RAM locations for ECC addition
+pub const MODULUS_LENGTH_OFFSET: usize = BASE + 0x408;
 
-const RESULT_X_OFFSET: usize = BASE + 0x578;
-const RESULT_Y_OFFSET: usize = BASE + 0x5D0;
-const RESULT_ERROR_OFFSET: usize = BASE + 0x680;
+pub const MODULUS_OFFSET_PTA: usize = BASE + 0x470;
+pub const POINT_P_X_PTA: usize = BASE + 0xD60;
+pub const POINT_P_Y_PTA: usize = BASE + 0xDB8;
+pub const POINT_P_Z_PTA: usize = BASE + 0xE10;
+pub const MONTGOMERY_PTA: usize = BASE + 0x4C8;
+
+pub const RESULT_X_PTA: usize = BASE + 0x578;
+pub const RESULT_Y_PTA: usize = BASE + 0x5D0;
+pub const RESULT_ERROR_PTA: usize = BASE + 0x680;
 
 const A_SIGN: u32 = 0x1;
 const A: [u32; 8] = [
@@ -75,43 +72,26 @@ const Y2: [u32; 8] = [
     0xBA7DADE6, 0x3CE98229, 0x9E04B79D, 0x227873D1,
 ];
 
-const X3: [u32; 8] = [
-    0x5ECBE4D1, 0xA6330A44, 0xC8F7EF95, 0x1D4BF165, 
-    0xE6C6B721, 0xEFADA985, 0xFB41661B, 0xC6E7FD6C,
+// Projective coordiantes of BASE_POINT + BASE_POINT
+const PROJ_X: [u32; 8] = [
+    0x9A978F59, 0xACD1B5AD, 0x570E7D52, 0xDCFCDE43, 
+    0x804B4227, 0x4F61DDCF, 0x1E7D8483, 0x91D6C70F
 ];
 
-const Y3: [u32; 8] = [
-    0x8734640C, 0x4998FF7E, 0x374B06CE, 0x1A64A2EC, 
-    0xD82AB036, 0x384FB83D, 0x9A79B127, 0xA27D5032,
+const PROJ_Y: [u32; 8] = [
+    0x4126885E, 0x7F786AF9, 0x5338238, 0xE5346D5F, 
+    0xE77FC463, 0x88668BD0, 0xFD59BE31, 0x90D2F5D1
 ];
 
-const X4: [u32; 8] = [
-    0xE2534A35, 0x32D08FBB, 0xA02DDE65, 0x9EE62BD0, 
-    0x031FE2DB, 0x785596EF, 0x50930244, 0x6B030852,
+const PROJ_Z: [u32; 8] = [
+    0x9FC685C5, 0xFC34FF37, 0x1DCFD694, 0xF81F3C2C, 
+    0x579C66AE, 0xD662BD9D, 0x976C80D0, 0x6F7EA3EA
 ];
 
-const Y4: [u32; 8] = [
-    0xE0F1575A, 0x4C633CC7, 0x19DFEE5F, 0xDA862D76, 
-    0x4EFC96C3, 0xF30EE005, 0x5C42C23F, 0x184ED8C6,
+const R2MODN: [u32; 8] = [
+    0x00000002, 0x00000000, 0xFFFFFFFA, 0x00000004, 
+    0xFFFFFFFB, 0xFFFFFFFF, 0x00000008, 0xFFFFFFFC
 ];
-
-const X5: [u32; 8] = [
-    0x51590B7A, 0x515140D2, 0xD784C856, 0x08668FDF, 
-    0xEF8C82FD, 0x1F5BE524, 0x21554A0D, 0xC3D033ED,
-];
-
-const Y5: [u32; 8] = [
-    0xE0C17DA8, 0x904A727D, 0x8AE1BF36, 0xBF8A7926, 
-    0x0D012F00, 0xD4D80888, 0xD1D0BB44, 0xFDA16DA4,
-];
-
-
-const SCALAR: [u32; 8] = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2];
-
-// const R2MODN: [u32; 8] = [
-//     0x00000002, 0x00000000, 0xFFFFFFFA, 0x00000004, 
-//     0xFFFFFFFB, 0xFFFFFFFF, 0x00000008, 0xFFFFFFFC
-// ];
 
 const OPERAND_LENGTH: u32 = 8 * 32;
 const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;   
@@ -218,17 +198,22 @@ unsafe fn main() -> ! {
 
     // Write the values - using 32-bit words
     zero_ram();
+    // constant values for P-256 curve
     write_ram(MODULUS_LENGTH_OFFSET, &[OPERAND_LENGTH]);
-    write_ram(PRIME_LENGTH_OFFSET, &[OPERAND_LENGTH]);
-    write_ram(COEF_A_SIGN_OFFSET, &[A_SIGN]);
+    write_ram(MODULUS_OFFSET_PTA, &N);
 
-    write_ram(COEF_A_OFFSET, &A);
-    write_ram(COEF_B_OFFSET, &B);
-    write_ram(MODULUS_OFFSET, &N);
-    write_ram(PRIME_OFFSET, &PRIME_ORDER);
-    write_ram(POINT_X_OFFSET, &BASE_POINT_X);
-    write_ram(POINT_Y_OFFSET, &BASE_POINT_Y);
-    write_ram(SCALAR_OFFSET, &SCALAR);
+    write_ram(POINT_P_X_PTA, &PROJ_X);
+    write_ram(POINT_P_Y_PTA, &PROJ_Y);
+    write_ram(POINT_P_Z_PTA, &PROJ_Z);
+
+    // Check the values 
+    let mut buf = [0u32; 8];
+    read_ram(POINT_P_X_PTA, &mut buf);
+    info!("x: {:#X}", buf);
+    read_ram(POINT_P_Y_PTA, &mut buf);
+    info!("y: {:#X}", buf);
+    read_ram(POINT_P_Z_PTA, &mut buf);
+    info!("z: {:#X}", buf);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
@@ -246,21 +231,19 @@ unsafe fn main() -> ! {
 
     // Read the result
     let mut result = [0u32; 1];
-    read_ram(RESULT_ERROR_OFFSET, &mut result);
+    let mut result_x = [0u32; 8];
+    let mut result_y = [0u32; 8];
+    read_ram(RESULT_ERROR_PTA, &mut result);
     if result[0] == 0xD60D {
         info!("No errors: {:#X}", result[0]);
-        let mut result_x = [0u32; 8];
-        let mut result_y = [0u32; 8];
-        read_ram(RESULT_X_OFFSET, &mut result_x);
-        read_ram(RESULT_Y_OFFSET, &mut result_y);
+        read_ram(RESULT_X_PTA, &mut result_x);
+        read_ram(RESULT_Y_PTA, &mut result_y);
         info!("POINT (X, Y): ({:#X}, {:#X})", result_x, result_y);
-        assert!(result_x == X2);
-        assert!(result_y == Y2);
     }
-    if result[0] == 0xCBC9 {
+    if result[0] == 0xA3B7 {
         info!("Error in computation: {:#X}", result);
     }
-    
+            
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
 

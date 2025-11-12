@@ -30,11 +30,13 @@ def big_endian_u32_array_to_int(value):
 
 # Example usage:
 # Convert N from a big-endian array of u32 values to an integer
-N_array = [
-    0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
-    0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
-]
-# N_array = [0xD]
+# N_array = [
+#     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
+#     0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
+# ]
+# N_array = [0xd]
+# N_array = [0xf0000000, 0xd0000001]
+N_array = [0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551]
 
 # Convert big-endian array to integer
 # modulus = sum((N_array[i] << (32 * (len(N_array) - 1 - i))) for i in range(len(N_array)))

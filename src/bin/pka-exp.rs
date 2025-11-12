@@ -27,6 +27,7 @@ const MODULUS_OFFSET: usize = BASE + 0x1088;
 const EXPONENT_E_OFFSET: usize = BASE + 0xE78;
 const RESULT_OFFSET: usize = BASE + 0x838;
 const MODE: u8 = 0x0;
+const RAM_NUM_DW: usize = 667 * 2;
 
 const N: [u32; 8] = [
     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 

@@ -11,7 +11,8 @@ use cortex_m::asm;
 use defmt::info;
 
 // For "abc" input, we need to declare it properly
-static MESSAGE: [u8; 3] = *b"abc";
+// static MESSAGE: [u8; 3] = *b"abc";
+static MESSAGE: [u32; 1] = [0x00616263];
 
 // Static variable to store the hash result
 static mut HASH_RESULT: [u32; 8] = [0; 8];
@@ -34,7 +35,7 @@ unsafe fn main() -> ! {
     while hash.hash_cr().read().init().bit_is_set() {
         asm::nop();
     }
-    info!("HASH peripheral initialized");
+    // info!("HASH peripheral initialized");
 
     // Read and log initial HASH_CR value
     let cr_value = hash.hash_cr().read().bits();
@@ -66,37 +67,44 @@ unsafe fn main() -> ! {
     }
 
     // let word = 0x61626300;
-    // hash.hash_din().write(|w| w.bits(word));
+    for &word in MESSAGE.iter() {
+        hash.hash_din().write(|w| w.bits(word));
+    }
 
-    // Pack bytes into a word (big-endian for SHA-256)
-    let mut word = 0u32;
-    for (i, &byte) in MESSAGE.iter().enumerate() {
-        // Shift existing bits and add new byte
-        word |= u32::from(byte) << (8 * (3 - (i % 4)));
+    // // Pack bytes into a word (big-endian for SHA-256)
+    // let mut word = 0u32;
+    // for (i, &byte) in MESSAGE.iter().enumerate() {
+    //     // Shift existing bits and add new byte
+    //     word |= u32::from(byte) << (8 * (3 - (i % 4)));
         
-        // Write word when we have 4 bytes or at the end of the message
-        if ((i + 1) % 4 == 0) || (i == MESSAGE.len() - 1) {
-            // If it's the last word and not a full 4-byte word, add padding
-            if i == MESSAGE.len() - 1 && MESSAGE.len() % 4 != 0 {
-                word |= 0x80 >> (8 * (i % 4 + 1));
-            }
+    //     // Write word when we have 4 bytes or at the end of the message
+    //     if ((i + 1) % 4 == 0) || (i == MESSAGE.len() - 1) {
+    //         // If it's the last word and not a full 4-byte word, add padding
+    //         if i == MESSAGE.len() - 1 && MESSAGE.len() % 4 != 0 {
+    //             word |= 0x80 >> (8 * (i % 4 + 1));
+    //         }
             
-            info!("Writing word: 0x{:08x}", word);
-            hash.hash_din().write(|w| w.bits(word));
-            word = 0;
-        }
-    }
+    //         info!("Writing word: 0x{:08x}", word);
+    //         hash.hash_din().write(|w| w.bits(word));
+    //         word = 0;
+    //     }
+    // }
 
 
-    // If message length is not a multiple of 4, ensure proper padding
-    if MESSAGE.len() % 4 != 0 {
-        // Set NBLW to the number of valid bits in the last word
-        hash.hash_str().write(|w| w.nblw().bits((MESSAGE.len() as u8 % 4) * 8));
-    }
+    // // If message length is not a multiple of 4, ensure proper padding
+    // if MESSAGE.len() % 4 != 0 {
+    //     // Set NBLW to the number of valid bits in the last word
+    //     hash.hash_str().write(|w| w.nblw().bits((MESSAGE.len() as u8 % 4) * 8));
+    // }
+    // // Start padding and digest computation
+    // hash.hash_str().write(|w| w.dcal().set_bit());
 
-    // Start padding and digest computation
-    hash.hash_str().write(|w| w.dcal().set_bit());
-
+    // Set the number of valid bytes in the last word (3 bytes for "abc")
+    hash.hash_str().write(|w| w
+        .nblw().bits(3)  // 3 valid bytes in the last word
+        .dcal().set_bit() // Start digest calculation
+    );
+    
     // Wait for busy bit to clear
     while hash.hash_sr().read().busy().bit_is_set() {
         asm::nop();
@@ -118,15 +126,12 @@ unsafe fn main() -> ! {
     HASH_RESULT[6] = hash.hash_hr6().read().bits();
     HASH_RESULT[7] = hash.hash_hr7().read().bits();
     
-
+    // info!("Expected hash for 'abc': ba7816bf 8f01cfea 414140de 5dae2223 b00361a3 96177a9c b410ff61 f20015ad");
     // Output the original hash result
     info!("SHA-256 hash (as-is from registers):");
     info!("{:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}", 
         HASH_RESULT[0], HASH_RESULT[1], HASH_RESULT[2], HASH_RESULT[3],
         HASH_RESULT[4], HASH_RESULT[5], HASH_RESULT[6], HASH_RESULT[7]);
-    
-    info!("Expected hash for 'abc': ba7816bf 8f01cfea 414140de 5dae2223 b00361a3 96177a9c b410ff61 f20015ad");
-
 
     loop {}
 }
