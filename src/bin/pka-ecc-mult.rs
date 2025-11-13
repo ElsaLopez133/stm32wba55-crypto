@@ -255,12 +255,13 @@ unsafe fn main() -> ! {
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
-    info!("Waiting for operation to complete...");
+    // info!("Waiting for operation to complete...");
     while pka.pka_sr().read().procendf().bit_is_clear() {
         asm::nop();
     }
-    info!("Operation complete!");
     gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
+    info!("Operation complete!");
+
 
     // Read the result
     let mut result = [0u32; 1];
