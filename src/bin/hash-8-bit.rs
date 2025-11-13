@@ -27,20 +27,20 @@ unsafe fn main() -> ! {
         w.hashen().set_bit();
         w.gpioaen().set_bit()
     });
-
+    
     // clock.rcc_ahb2enr().modify(|_, w| w.hashen().set_bit());
     // clock.rcc_ahb2enr().modify(|_, w| w.gpioaen().set_bit());
 
     // set pin to putput mode
-    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode15().bits(0b01) }); // PA15 as output
+    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
     // set output type to push-pull
-    gpio.gpioa_otyper().modify(|_, w| w.ot15().clear_bit());
+    gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
     // set speed to low
-    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed15().bits(0b00) });
+    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed12().bits(0b00) });
     // no pull-up/pull-down
-    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd15().bits(0b00) });
+    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd12().bits(0b00) });
     // set initial state to low
-    gpio.gpioa_bsrr().write(|w| w.br15().set_bit());
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
 
     info!("Starting SHA-256 hash calculation");
 
@@ -88,7 +88,7 @@ unsafe fn main() -> ! {
     hash.hash_str().write(|w| w.nblw().bits(24));
 
     // Begin hash computation
-    gpio.gpioa_bsrr().write(|w| w.bs15().set_bit());
+    gpio.gpioa_bsrr().write(|w| w.bs12().set_bit());
 
     // Start padding and digest computation
     hash.hash_str().write(|w| w.dcal().set_bit());
@@ -102,7 +102,7 @@ unsafe fn main() -> ! {
         asm::nop();
     }
     // end of hash
-    gpio.gpioa_bsrr().write(|w| w.br15().set_bit());
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
 
     info!("Hash calculation complete");
 

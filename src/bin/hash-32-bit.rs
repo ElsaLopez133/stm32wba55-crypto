@@ -12,7 +12,11 @@ use defmt::info;
 
 // For "abc" input, we need to declare it properly
 // static MESSAGE: [u8; 3] = *b"abc";
-static MESSAGE: [u32; 1] = [0x00616263];
+// static MESSAGE: [u32; 1] = [0x00616263];
+const MESSAGE: [u32; 8] = [ 
+    0xA41A41A1, 0x2A799548, 0x211C410C, 0x65D8133A,
+    0xFDE34D28, 0xBDD542E4, 0xB680CF28, 0x99C8A8C4
+];
 
 // Static variable to store the hash result
 static mut HASH_RESULT: [u32; 8] = [0; 8];
@@ -23,26 +27,34 @@ unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
     let hash = &p.HASH;
     let clock = &p.RCC;
+    let gpio = &p.GPIOA;
 
     // Enable HASH peripheral clock via RCC_AHB2ENR register
     // HASH peripheral is located on AHB2
-    clock.rcc_ahb2enr().modify(|_, w| w.hashen().set_bit());
-
-    info!("Starting SHA-256 hash calculation");
+    clock.rcc_ahb2enr().modify(|_, w| {
+        w.hashen().set_bit();
+        w.gpioaen().set_bit()
+    });
+    
+    // set pin to putput mode
+    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
+    // set output type to push-pull
+    gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
+    // set speed to low
+    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed12().bits(0b00) });
+    // no pull-up/pull-down
+    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd12().bits(0b00) });
+    // set initial state to low
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
     
     // Reset HASH peripheral
     hash.hash_cr().write(|w| w.init().set_bit());
     while hash.hash_cr().read().init().bit_is_set() {
         asm::nop();
     }
-    // info!("HASH peripheral initialized");
+    info!("HASH peripheral initialized");
 
-    // Read and log initial HASH_CR value
-    let cr_value = hash.hash_cr().read().bits();
-    let algo = hash.hash_cr().read().algo().bits();
-    let datatype = hash.hash_cr().read().datatype().bits();
-    info!("Initial HASH_CR: 0x{:b}, ALGO: {:b}, DATATYPE: {:b}", cr_value, algo, datatype);
-    
+
     // Configure for SHA-256 mode. HASH_CR pg844 Reference Manual
     hash.hash_cr().write(|w| w
         .algo().bits(0b11)       // Set to SHA2-256 algorithm (11)
@@ -51,13 +63,6 @@ unsafe fn main() -> ! {
         .dmae().clear_bit()      // Bit 3: No DMA (0)
         .init().set_bit()        // Complete the initialization by setting to 1 the INIT bit in HASH_CR (pg835)
     );
-
-    // Read and log updated HASH_CR value
-    let cr_value = hash.hash_cr().read().bits();
-    let algo = hash.hash_cr().read().algo().bits();
-    let datatype = hash.hash_cr().read().datatype().bits();
-    info!("Configured HASH_CR: 0x{:b}, ALGO: {:b}, DATATYPE: {:b}", cr_value, algo, datatype);
-
 
     // Check that the peripheral is ready (not busy)
     if hash.hash_sr().read().busy().bit_is_set() {
@@ -99,11 +104,14 @@ unsafe fn main() -> ! {
     // // Start padding and digest computation
     // hash.hash_str().write(|w| w.dcal().set_bit());
 
-    // Set the number of valid bytes in the last word (3 bytes for "abc")
-    hash.hash_str().write(|w| w
-        .nblw().bits(3)  // 3 valid bytes in the last word
-        .dcal().set_bit() // Start digest calculation
-    );
+    
+    // All 256 bits are valid (no partial word)
+    hash.hash_str().write(|w| w.nblw().bits(0));
+
+    info!("Starting HASH computation");
+    gpio.gpioa_bsrr().write(|w| w.bs12().set_bit());
+
+    hash.hash_str().write(|w| w.dcal().set_bit());
     
     // Wait for busy bit to clear
     while hash.hash_sr().read().busy().bit_is_set() {
@@ -114,6 +122,7 @@ unsafe fn main() -> ! {
     while hash.hash_sr().read().dcis().bit_is_clear() {
         asm::nop();
     }
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
     info!("Hash calculation complete");
     
     // Read hash result from HASH_HR0-HASH_HR7
@@ -126,6 +135,7 @@ unsafe fn main() -> ! {
     HASH_RESULT[6] = hash.hash_hr6().read().bits();
     HASH_RESULT[7] = hash.hash_hr7().read().bits();
     
+
     // info!("Expected hash for 'abc': ba7816bf 8f01cfea 414140de 5dae2223 b00361a3 96177a9c b410ff61 f20015ad");
     // Output the original hash result
     info!("SHA-256 hash (as-is from registers):");

@@ -145,6 +145,7 @@ unsafe fn main() -> ! {
     let pka = &p.PKA;
     let clock = &p.RCC;
     let rng = &p.RNG;
+    let gpio = &p.GPIOA;
 
     // Enable HSI as a stable clock source
     clock.rcc_cr().modify(|_, w| w
@@ -156,10 +157,24 @@ unsafe fn main() -> ! {
 
     // Enable RNG clock. Select the source clock. Select the AHB clock
     clock.rcc_ccipr2().write(|w| w.rngsel().b_0x2());
-    clock.rcc_ahb2enr().modify(|_, w| w.rngen().set_bit());
+    clock.rcc_ahb2enr().modify(|_, w| {
+        w.rngen().set_bit();
+        w.gpioaen().set_bit()
+    });
     while clock.rcc_ahb2enr().read().rngen().bit_is_clear() {
         asm::nop();
     }
+
+    // set pin to putput mode
+    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
+    // set output type to push-pull
+    gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
+    // set speed to low
+    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed12().bits(0b00) });
+    // no pull-up/pull-down
+    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd12().bits(0b00) });
+    // set initial state to low
+    gpio.gpioa_bsrr().write(|w: &mut stm32wba::raw::W<stm32wba55::gpioa::gpioa_bsrr::GPIOA_BSRRrs>| w.br12().set_bit());
 
     // Configure RNG
     // To configure, CONDRST bit is set to 1 in the same access and CONFIGLOCK remains at 0
@@ -250,7 +265,9 @@ unsafe fn main() -> ! {
     // info!("ECDSA_SIGN_N: {:#X}", buf);
 
     // Configure PKA operation mode and start
-    info!("Starting PKA operation...");
+    info!("Starting SIGN operation...");
+    gpio.gpioa_bsrr().write(|w| w.bs12().set_bit()); // set high
+
     pka.pka_cr().modify(|_, w| w
         .mode().bits(SIGN)
         .start().set_bit()  // Start the operation
@@ -261,8 +278,10 @@ unsafe fn main() -> ! {
     while pka.pka_sr().read().procendf().bit_is_clear() {
         asm::nop();
     }
-    info!("Operation complete!");
 
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
+    info!("Operation complete!");
+    
     // Read the result
     let mut result = [0u32; 1];
     let mut sign_out_r = [0u32; MODULUS_SIZE];
@@ -310,17 +329,20 @@ unsafe fn main() -> ! {
     write_ram(ECDSA_VERIFY_N, &PRIME_ORDER);
 
     // Configure PKA operation mode and start
-    info!("Starting PKA operation...");
+    info!("Starting Verify operation...");
+    gpio.gpioa_bsrr().write(|w| w.bs12().set_bit()); // set high
+
     pka.pka_cr().modify(|_, w| w
         .mode().bits(VERIFY)
         .start().set_bit()  // Start the operation
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
-    info!("Waiting for operation to complete...");
+    // info!("Waiting for operation to complete...");
     while pka.pka_sr().read().procendf().bit_is_clear() {
         asm::nop();
     }
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
     info!("Operation complete!");
 
     // Read the result

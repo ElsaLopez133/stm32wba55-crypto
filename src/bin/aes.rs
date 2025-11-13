@@ -24,24 +24,6 @@ const PLAINTEXT_BLOCKS: &[[u32; 4]] = &[
     // add more 16-byte blocks if needed
 ];
 
-
-// fn write_key_word(aes: &stm32wba55::AES, index: usize, val: u32) {
-//     unsafe {
-//         match index {
-//             0 => aes.aes_keyr0().write(|w| w.bits(val)),
-//             1 => aes.aes_keyr1().write(|w| w.bits(val)),
-//             2 => aes.aes_keyr2().write(|w| w.bits(val)),
-//             3 => aes.aes_keyr3().write(|w| w.bits(val)),
-//             4 => aes.aes_keyr4().write(|w| w.bits(val)),
-//             5 => aes.aes_keyr5().write(|w| w.bits(val)),
-//             6 => aes.aes_keyr6().write(|w| w.bits(val)),
-//             7 => aes.aes_keyr7().write(|w| w.bits(val)),
-//             _ => {}
-//         }
-//     }
-// }
-
-
 #[entry]
 unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
@@ -57,20 +39,17 @@ unsafe fn main() -> ! {
     });
 
     // set pin to putput mode
-    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode15().bits(0b01) }); // PA15 as output
+    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
     // set output type to push-pull
-    gpio.gpioa_otyper().modify(|_, w| w.ot15().clear_bit());
+    gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
     // set speed to low
-    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed15().bits(0b00) });
+    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed12().bits(0b00) });
     // no pull-up/pull-down
-    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd15().bits(0b00) });
+    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd12().bits(0b00) });
     // set initial state to low
-    gpio.gpioa_bsrr().write(|w| w.br15().set_bit());
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
 
     info!("Starting AES calculation");
-
-    // // Enable AES peripheral
-    // aes.aes_cr().write(|w| w.en().set_bit());
 
     // Initialize AES_CR
     // Choose: ECB (CHMOD = 0x0) or CBC (CHMOD = 0x1)
@@ -85,12 +64,12 @@ unsafe fn main() -> ! {
          .kmod().b_0x0()    
     });
 
-    // Read and log updated HASH_CR value
-    let cr_value = aes.aes_cr().read().bits();
-    let chmod = aes.aes_cr().read().chmod().bits();
-    let datatype = aes.aes_cr().read().datatype().bits();
-    let keysize = aes.aes_cr().read().keysize().is_b_0x1();
-    info!("Configured AES_CR: 0x{:b}, CHMOD: {:b}, DATATYPE: {:b}, KEYSIZE 256: {:b}", cr_value, chmod, datatype, keysize);
+    // // Read and log updated HASH_CR value
+    // let cr_value = aes.aes_cr().read().bits();
+    // let chmod = aes.aes_cr().read().chmod().bits();
+    // let datatype = aes.aes_cr().read().datatype().bits();
+    // let keysize = aes.aes_cr().read().keysize().is_b_0x1();
+    // info!("Configured AES_CR: 0x{:b}, CHMOD: {:b}, DATATYPE: {:b}, KEYSIZE 256: {:b}", cr_value, chmod, datatype, keysize);
 
     // Check that the peripheral is ready (not busy)
     if aes.aes_sr().read().busy().bit_is_set() {
@@ -138,7 +117,6 @@ unsafe fn main() -> ! {
         }
     }
     info!("Key written to AES_KEYRx registers.");
-    // Loop until the KEYVALID flag in AES_SR is asserted.
     while aes.aes_sr().read().keyvalid().bit_is_clear() {
         asm::nop();
     }
@@ -148,12 +126,12 @@ unsafe fn main() -> ! {
     aes.aes_cr().modify(|_, w| w.en().set_bit());
 
     // Append cleartext data block by block
-    // Begin AES computation
-    gpio.gpioa_bsrr().write(|w| w.bs15().set_bit());
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit()); //set low
+    gpio.gpioa_bsrr().write(|w| w.bs12().set_bit()); // set high
 
     let mut ciphertext_blocks: [[u32; 4]; PLAINTEXT_BLOCKS.len()] = [[0;4]; PLAINTEXT_BLOCKS.len()];
 
-    info!("Writing plaintext blocks...");
+    // info!("Writing plaintext blocks...");
     for (i, block) in PLAINTEXT_BLOCKS.iter().enumerate() {
         // Write the block into AES_DINR
         for word in block.iter() {
@@ -165,26 +143,26 @@ unsafe fn main() -> ! {
             cortex_m::asm::nop();
         }
 
-        // Read ciphertext from AES_DOUTR
-        ciphertext_blocks[i][0] = aes.aes_doutr().read().bits();
-        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
-        ciphertext_blocks[i][1] = aes.aes_doutr().read().bits();
-        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
-        ciphertext_blocks[i][2] = aes.aes_doutr().read().bits();
-        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
-        ciphertext_blocks[i][3] = aes.aes_doutr().read().bits();
-        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
+        // // Read ciphertext from AES_DOUTR
+        // ciphertext_blocks[i][0] = aes.aes_doutr().read().bits();
+        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
+        // ciphertext_blocks[i][1] = aes.aes_doutr().read().bits();
+        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
+        // ciphertext_blocks[i][2] = aes.aes_doutr().read().bits();
+        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
+        // ciphertext_blocks[i][3] = aes.aes_doutr().read().bits();
+        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
 
-        info!("AES ciphertext block {}: {:08x} {:08x} {:08x} {:08x}",
-            i,
-            ciphertext_blocks[i][0],
-            ciphertext_blocks[i][1],
-            ciphertext_blocks[i][2],
-            ciphertext_blocks[i][3]
-        );
+        // info!("AES ciphertext block {}: {:08x} {:08x} {:08x} {:08x}",
+        //     i,
+        //     ciphertext_blocks[i][0],
+        //     ciphertext_blocks[i][1],
+        //     ciphertext_blocks[i][2],
+        //     ciphertext_blocks[i][3]
+        // );
     }
 
-    gpio.gpioa_bsrr().write(|w| w.br15().set_bit()); // PA15 LOW -> end measurement
+    gpio.gpioa_bsrr().write(|w| w.br12().set_bit()); // PA15 LOW -> end measurement
 
     for (i, block) in ciphertext_blocks.iter().enumerate() {
         info!("AES ciphertext block {}: {:08x} {:08x} {:08x} {:08x}",
@@ -195,6 +173,5 @@ unsafe fn main() -> ! {
     aes.aes_cr().modify(|_, w| w.en().clear_bit());
 
     info!("AES sequence done");
-
     loop {}
 }
