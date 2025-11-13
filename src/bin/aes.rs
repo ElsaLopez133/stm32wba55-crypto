@@ -64,12 +64,12 @@ unsafe fn main() -> ! {
          .kmod().b_0x0()    
     });
 
-    // // Read and log updated HASH_CR value
-    // let cr_value = aes.aes_cr().read().bits();
-    // let chmod = aes.aes_cr().read().chmod().bits();
-    // let datatype = aes.aes_cr().read().datatype().bits();
-    // let keysize = aes.aes_cr().read().keysize().is_b_0x1();
-    // info!("Configured AES_CR: 0x{:b}, CHMOD: {:b}, DATATYPE: {:b}, KEYSIZE 256: {:b}", cr_value, chmod, datatype, keysize);
+    // Read and log updated HASH_CR value
+    let cr_value = aes.aes_cr().read().bits();
+    let chmod = aes.aes_cr().read().chmod().bits();
+    let datatype = aes.aes_cr().read().datatype().bits();
+    let keysize = aes.aes_cr().read().keysize().is_b_0x1();
+    info!("Configured AES_CR: 0x{:b}, CHMOD: {:b}, DATATYPE: {:b}, KEYSIZE 256: {:b}", cr_value, chmod, datatype, keysize);
 
     // Check that the peripheral is ready (not busy)
     if aes.aes_sr().read().busy().bit_is_set() {
@@ -143,23 +143,23 @@ unsafe fn main() -> ! {
             cortex_m::asm::nop();
         }
 
-        // // Read ciphertext from AES_DOUTR
-        // ciphertext_blocks[i][0] = aes.aes_doutr().read().bits();
-        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
-        // ciphertext_blocks[i][1] = aes.aes_doutr().read().bits();
-        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
-        // ciphertext_blocks[i][2] = aes.aes_doutr().read().bits();
-        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
-        // ciphertext_blocks[i][3] = aes.aes_doutr().read().bits();
-        // info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
+        // Read ciphertext from AES_DOUTR
+        ciphertext_blocks[i][0] = aes.aes_doutr().read().bits();
+        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][0]);
+        ciphertext_blocks[i][1] = aes.aes_doutr().read().bits();
+        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][1]);
+        ciphertext_blocks[i][2] = aes.aes_doutr().read().bits();
+        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][2]);
+        ciphertext_blocks[i][3] = aes.aes_doutr().read().bits();
+        info!("ciphertext_blocks[0] = {:08x}", ciphertext_blocks[i][3]);
 
-        // info!("AES ciphertext block {}: {:08x} {:08x} {:08x} {:08x}",
-        //     i,
-        //     ciphertext_blocks[i][0],
-        //     ciphertext_blocks[i][1],
-        //     ciphertext_blocks[i][2],
-        //     ciphertext_blocks[i][3]
-        // );
+        info!("AES ciphertext block {}: {:08x} {:08x} {:08x} {:08x}",
+            i,
+            ciphertext_blocks[i][0],
+            ciphertext_blocks[i][1],
+            ciphertext_blocks[i][2],
+            ciphertext_blocks[i][3]
+        );
     }
 
     gpio.gpioa_bsrr().write(|w| w.br12().set_bit()); // PA15 LOW -> end measurement
