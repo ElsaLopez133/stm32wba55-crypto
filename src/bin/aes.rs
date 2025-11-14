@@ -10,9 +10,11 @@ use defmt::info;
 use stm32wba::stm32wba55::{self, aes};
 use {defmt_rtt as _, panic_probe as _};
 
-const KEY256: [u32; 8] = [
-    0x00112233, 0x44556677, 0x8899aabb, 0xccddeeff, 0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
-];
+// const KEY256: [u32; 8] = [
+//     0x00112233, 0x44556677, 0x8899aabb, 0xccddeeff, 0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
+// ];
+
+const KEY128: [u32; 4] = [0x00112233, 0x44556677, 0x8899aabb, 0xccddeeff];
 
 const IV128: [u32; 4] = [0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f];
 
@@ -23,6 +25,7 @@ const PLAINTEXT_BLOCKS: &[[u32; 4]] = &[
 
 #[entry]
 unsafe fn main() -> ! {
+    info!("Starting");
     let p = stm32wba55::Peripherals::take().unwrap();
     let aes = &p.AES;
     let clock = &p.RCC;
@@ -38,7 +41,7 @@ unsafe fn main() -> ! {
     // set pin to putput mode
     gpio.gpioa_moder()
         .modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
-                                                          // set output type to push-pull
+    // set output type to push-pull
     gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
     // set speed to low
     gpio.gpioa_ospeedr()
@@ -64,7 +67,8 @@ unsafe fn main() -> ! {
             .datatype()
             .bits(0b10) // 32-bit data no swapping
             .keysize()
-            .b_0x1() // 256-bit key
+            .b_0x0() // 128-bit key
+            // .b_0x1() // 256-bit key
             .kmod()
             .b_0x0()
     });
@@ -105,7 +109,7 @@ unsafe fn main() -> ! {
     // }
 
     info!("Writing key to registers...");
-    for (i, kword) in KEY256.iter().enumerate() {
+    for (i, kword) in KEY128.iter().enumerate() {
         if i == 0 {
             aes.aes_keyr0().write(|w| unsafe { w.bits(*kword) });
         } else if i == 1 {
@@ -114,15 +118,16 @@ unsafe fn main() -> ! {
             aes.aes_keyr2().write(|w| unsafe { w.bits(*kword) });
         } else if i == 3 {
             aes.aes_keyr3().write(|w| unsafe { w.bits(*kword) });
-        } else if i == 4 {
-            aes.aes_keyr4().write(|w| unsafe { w.bits(*kword) });
-        } else if i == 5 {
-            aes.aes_keyr5().write(|w| unsafe { w.bits(*kword) });
-        } else if i == 6 {
-            aes.aes_keyr6().write(|w| unsafe { w.bits(*kword) });
-        } else if i == 7 {
-            aes.aes_keyr7().write(|w| unsafe { w.bits(*kword) });
         }
+        // } else if i == 4 {
+        //     aes.aes_keyr4().write(|w| unsafe { w.bits(*kword) });
+        // } else if i == 5 {
+        //     aes.aes_keyr5().write(|w| unsafe { w.bits(*kword) });
+        // } else if i == 6 {
+        //     aes.aes_keyr6().write(|w| unsafe { w.bits(*kword) });
+        // } else if i == 7 {
+        //     aes.aes_keyr7().write(|w| unsafe { w.bits(*kword) });
+        // }
     }
     info!("Key written to AES_KEYRx registers.");
     while aes.aes_sr().read().keyvalid().bit_is_clear() {

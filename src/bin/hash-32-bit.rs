@@ -13,9 +13,11 @@ use {defmt_rtt as _, panic_probe as _};
 // For "abc" input, we need to declare it properly
 // static MESSAGE: [u8; 3] = *b"abc";
 // static MESSAGE: [u32; 1] = [0x00616263];
-const MESSAGE: [u32; 8] = [
-    0xA41A41A1, 0x2A799548, 0x211C410C, 0x65D8133A, 0xFDE34D28, 0xBDD542E4, 0xB680CF28, 0x99C8A8C4,
-];
+// const MESSAGE: [u32; 8] = [
+//     0xA41A41A1, 0x2A799548, 0x211C410C, 0x65D8133A, 0xFDE34D28, 0xBDD542E4, 0xB680CF28, 0x99C8A8C4,
+// ];
+
+const MESSAGE: [u32; 4] = [0xA41A41A1, 0x2A799548, 0x211C410C, 0x65D8133A];
 
 // Static variable to store the hash result
 static mut HASH_RESULT: [u32; 8] = [0; 8];
@@ -38,7 +40,7 @@ unsafe fn main() -> ! {
     // set pin to putput mode
     gpio.gpioa_moder()
         .modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
-                                                          // set output type to push-pull
+    // set output type to push-pull
     gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
     // set speed to low
     gpio.gpioa_ospeedr()
