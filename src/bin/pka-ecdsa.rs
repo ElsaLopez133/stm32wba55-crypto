@@ -129,6 +129,13 @@ unsafe fn zero_ram() {
         .for_each(|dw| unsafe { write_volatile((dw * 4 + RAM_BASE) as *mut u32, 0) });
 }
 
+#[inline(always)]
+fn full_barrier() {
+    cortex_m::asm::dsb();
+    cortex_m::asm::dmb();
+    cortex_m::asm::isb();
+}
+
 #[entry]
 unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
@@ -156,7 +163,7 @@ unsafe fn main() -> ! {
     // set pin to putput mode
     gpio.gpioa_moder()
         .modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
-                                                          // set output type to push-pull
+    // set output type to push-pull
     gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
     // set speed to low
     gpio.gpioa_ospeedr()
@@ -186,6 +193,7 @@ unsafe fn main() -> ! {
 
     // First clear CONDRST while keeping RNGEN disabled
     rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
+    full_barrier();
 
     // Then enable RNG in a separate step
     rng.rng_cr()
