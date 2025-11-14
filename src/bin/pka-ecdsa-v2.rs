@@ -3,15 +3,15 @@
 
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
 // use stm32wba::stm32wba55;
-use stm32wba::stm32wba55::{self,pka::pka_cr::MODE};
-use {defmt_rtt as _, panic_probe as _};
-use cortex_m_rt::entry;
-use cortex_m::asm;
-use defmt::info;
 use core::{
     mem::size_of,
     ptr::{read_volatile, write_volatile},
 };
+use cortex_m::asm;
+use cortex_m_rt::entry;
+use defmt::info;
+use stm32wba::stm32wba55::{self, pka::pka_cr::MODE};
+use {defmt_rtt as _, panic_probe as _};
 
 #[entry]
 fn main() -> ! {
@@ -29,15 +29,15 @@ fn main() -> ! {
     let hash: [u32; 8] = [0; 8];
     let mut r_sign: [u32; 8] = [0; 8];
     let mut s_sign: [u32; 8] = [0; 8];
-    
+
     // Perform ECDSA Signing using PKA
     match pka.ecdsa_sign(&curve, &nonce, &priv_key, &hash, &mut r_sign, &mut s_sign) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             info!("Error during ECDSA signing: {:?}", e);
         }
     }
-    
+
     info!("ECDSA Signature r: {:#X}", r_sign);
     info!("ECDSA Signature s: {:#X}", s_sign);
 
@@ -176,7 +176,7 @@ impl From<PkaOpcode> for u8 {
 }
 
 const BASE: usize = 0x520C_2000;
-const PKA_RAM_OFFSET: usize = 0x400; 
+const PKA_RAM_OFFSET: usize = 0x400;
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const RAM_NUM_DW: usize = 667;
 
@@ -219,8 +219,7 @@ const ECDSA_VERIFY_OUT: usize = BASE + 0x5B0;
 const ECDSA_VERIFY_SIGN_OUT_R: usize = BASE + 0x578;
 
 const PRIV_KEY: [u32; 8] = [
-     0x49ac8727, 0xcee87484, 0xfe6dfda5, 0x10238ad4, 
-     0x11ace8fe, 0x593a8cb7, 0x0492d659, 0xdb81802a,
+    0x49ac8727, 0xcee87484, 0xfe6dfda5, 0x10238ad4, 0x11ace8fe, 0x593a8cb7, 0x0492d659, 0xdb81802a,
 ];
 
 /// PKA driver.
@@ -239,31 +238,34 @@ impl Pka {
 
         // Configure RNG clock
         rcc.rcc_ccipr2().write(|w| w.rngsel().b_0x2());
-        
+
         // Enable RNG clock on AHB2
         rcc.rcc_ahb2enr().modify(|_, w| w.rngen().set_bit());
         while rcc.rcc_ahb2enr().read().rngen().bit_is_clear() {
             asm::nop();
         }
 
-        // Configure RNG 
-        rng.rng_cr().write(|w| w
-            .rngen().clear_bit()
-            .condrst().set_bit()
-            .configlock().clear_bit() 
-            .nistc().clear_bit()   
-            .ced().clear_bit() 
-        );
+        // Configure RNG
+        rng.rng_cr().write(|w| {
+            w.rngen()
+                .clear_bit()
+                .condrst()
+                .set_bit()
+                .configlock()
+                .clear_bit()
+                .nistc()
+                .clear_bit()
+                .ced()
+                .clear_bit()
+        });
 
         // Clear CONDRST while keeping RNGEN disabled
         rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
 
         // Enable RNG with interrupts
-        rng.rng_cr().modify(|_, w| w
-            .rngen().set_bit()
-            .ie().set_bit()
-        );
-        
+        rng.rng_cr()
+            .modify(|_, w| w.rngen().set_bit().ie().set_bit());
+
         while rng.rng_sr().read().drdy().bit_is_clear() {
             asm::nop();
         }
@@ -279,7 +281,7 @@ impl Pka {
 
         // Enable PKA peripheral
         pka.pka_cr().modify(|_, w| w.en().set_bit());
-    
+
         // Wait for PKA to initialize
         while pka.pka_sr().read().initok().bit_is_clear() {
             asm::nop();
@@ -345,7 +347,7 @@ impl Pka {
             write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
         });
     }
-    
+
     unsafe fn read_ram(&mut self, offset: usize, buf: &mut [u32]) {
         debug_assert_eq!(offset % 4, 0);
         debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
@@ -433,7 +435,7 @@ impl Pka {
         r_sign: &mut [u32; MODULUS_SIZE],
         s_sign: &mut [u32; MODULUS_SIZE],
     ) -> Result<(), EcdsaSignError> {
-        let mode =self.pka.pka_cr().read().mode();
+        let mode = self.pka.pka_cr().read().mode();
         if !mode.is_b_0x24() {
             return EcdsaSignError::mode(mode.bits());
         }

@@ -3,15 +3,15 @@
 
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
 // use stm32wba::stm32wba55;
-use stm32wba::stm32wba55::{self,pka::pka_cr::MODE};
-use {defmt_rtt as _, panic_probe as _};
-use cortex_m_rt::entry;
-use cortex_m::asm;
-use defmt::info;
 use core::{
     mem::size_of,
     ptr::{read_volatile, write_volatile},
 };
+use cortex_m::asm;
+use cortex_m_rt::entry;
+use defmt::info;
+use stm32wba::stm32wba55::{self, pka::pka_cr::MODE};
+use {defmt_rtt as _, panic_probe as _};
 
 #[entry]
 unsafe fn main() -> ! {
@@ -25,22 +25,22 @@ unsafe fn main() -> ! {
 
     let curve = curve::NIST_P256;
     let mut result: [u32; 8] = [0; 8];
-    
+
     match pka.ecc_check(&curve, &POINT_X, &POINT_Y, &mut result) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             info!("Error during Ecc Check: {:?}", e);
         }
     }
     if result[0] == 0xD60D {
         info!("Point on curve ({:#X})", result);
-    } 
+    }
     if result[0] == 0xA3B7 {
         info!("Point not on curve ({:#X})", result);
-    } 
+    }
     if result[0] == 0xF946 {
         info!("X or Y coordinate is not smaller than N ({:#X})", result);
-    } 
+    }
 
     loop {
         asm::nop();
@@ -52,8 +52,8 @@ unsafe fn main() -> ! {
 pub enum Error {
     Address,
     Ram,
-    Mode {mode: u8},
-    Unknown {bits: u32},
+    Mode { mode: u8 },
+    Unknown { bits: u32 },
     Busy,
 }
 
@@ -70,9 +70,8 @@ impl Error {
     }
 }
 
-
 const BASE: usize = 0x520C_2000;
-const PKA_RAM_OFFSET: usize = 0x400; 
+const PKA_RAM_OFFSET: usize = 0x400;
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const RAM_NUM_DW: usize = 667;
 
@@ -88,13 +87,11 @@ const MONTGOMERY_OFFSET: usize = BASE + 0x4C8;
 const RESULT_OFFSET: usize = BASE + 0x680;
 
 const POINT_X: [u32; 8] = [
-    0x6b17d1f2, 0xe12c4247, 0xf8bce6e5, 0x63a440f2, 
-    0x77037d81, 0x2deb33a0, 0xf4a13945, 0xd898c296,
+    0x6b17d1f2, 0xe12c4247, 0xf8bce6e5, 0x63a440f2, 0x77037d81, 0x2deb33a0, 0xf4a13945, 0xd898c296,
 ];
 
 const POINT_Y: [u32; 8] = [
-    0x4fe342e2, 0xfe1a7f9b, 0x8ee7eb4a, 0x7c0f9e16, 
-    0x2bce3357, 0x6b315ece, 0xcbb64068, 0x37bf51f5,
+    0x4fe342e2, 0xfe1a7f9b, 0x8ee7eb4a, 0x7c0f9e16, 0x2bce3357, 0x6b315ece, 0xcbb64068, 0x37bf51f5,
 ];
 
 /// PKA driver.
@@ -104,7 +101,12 @@ pub struct Pka {
 }
 
 impl Pka {
-    unsafe fn new(pka: stm32wba55::PKA, rcc: &stm32wba55::RCC, rng: &stm32wba55::RNG, opcode: PkaOpcode) -> Self {
+    unsafe fn new(
+        pka: stm32wba55::PKA,
+        rcc: &stm32wba55::RCC,
+        rng: &stm32wba55::RNG,
+        opcode: PkaOpcode,
+    ) -> Self {
         // Enable HSE (External High-Speed Clock) as a stable clock source
         rcc.rcc_cr().modify(|_, w| w.hseon().set_bit());
         while rcc.rcc_cr().read().hserdy().bit_is_clear() {
@@ -113,31 +115,34 @@ impl Pka {
 
         // Configure RNG clock
         rcc.rcc_ccipr2().write(|w| w.rngsel().b_0x2());
-        
+
         // Enable RNG clock on AHB2
         rcc.rcc_ahb2enr().modify(|_, w| w.rngen().set_bit());
         while rcc.rcc_ahb2enr().read().rngen().bit_is_clear() {
             asm::nop();
         }
 
-        // Configure RNG 
-        rng.rng_cr().write(|w| w
-            .rngen().clear_bit()
-            .condrst().set_bit()
-            .configlock().clear_bit() 
-            .nistc().clear_bit()   
-            .ced().clear_bit() 
-        );
+        // Configure RNG
+        rng.rng_cr().write(|w| {
+            w.rngen()
+                .clear_bit()
+                .condrst()
+                .set_bit()
+                .configlock()
+                .clear_bit()
+                .nistc()
+                .clear_bit()
+                .ced()
+                .clear_bit()
+        });
 
         // Clear CONDRST while keeping RNGEN disabled
         rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
 
         // Enable RNG with interrupts
-        rng.rng_cr().modify(|_, w| w
-            .rngen().set_bit()
-            .ie().set_bit()
-        );
-        
+        rng.rng_cr()
+            .modify(|_, w| w.rngen().set_bit().ie().set_bit());
+
         while rng.rng_sr().read().drdy().bit_is_clear() {
             asm::nop();
         }
@@ -153,10 +158,8 @@ impl Pka {
 
         // Enable PKA peripheral
         // pka.pka_cr().modify(|_, w| w.en().set_bit());
-        pka.pka_cr().write(|w| w
-            .en().set_bit()
-            .mode().bits(opcode as u8)
-        );
+        pka.pka_cr()
+            .write(|w| w.en().set_bit().mode().bits(opcode as u8));
 
         // Wait for PKA to initialize
         while pka.pka_sr().read().initok().bit_is_clear() {
@@ -188,7 +191,7 @@ impl Pka {
             write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
         });
     }
-    
+
     unsafe fn read_ram(&mut self, offset: usize, buf: &mut [u32]) {
         debug_assert_eq!(offset % 4, 0);
         debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
@@ -215,10 +218,13 @@ impl Pka {
             w.start().set_bit();
             w.en().set_bit()
         });
-
     }
 
-    unsafe fn ecc_check<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
+    unsafe fn ecc_check<
+        const MODULUS_SIZE: usize,
+        const OPERAND_SIZE: usize,
+        const PRIME_ORDER_SIZE: usize,
+    >(
         &mut self,
         curve: &EllipticCurve<MODULUS_SIZE, PRIME_ORDER_SIZE, OPERAND_SIZE>,
         point_x: &[u32; MODULUS_SIZE],
@@ -230,7 +236,11 @@ impl Pka {
         self.ecc_check_result(result)
     }
 
-    unsafe fn ecc_check_start<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
+    unsafe fn ecc_check_start<
+        const MODULUS_SIZE: usize,
+        const OPERAND_SIZE: usize,
+        const PRIME_ORDER_SIZE: usize,
+    >(
         &mut self,
         curve: &EllipticCurve<MODULUS_SIZE, PRIME_ORDER_SIZE, OPERAND_SIZE>,
         point_x: &[u32; MODULUS_SIZE],
@@ -273,34 +283,33 @@ impl Pka {
             Err(Error::Ram)
         } else {
             unsafe {
-               self.start_process(PkaOpcode::Point);
+                self.start_process(PkaOpcode::Point);
             }
             Ok(())
         }
-        
     }
 
     unsafe fn ecc_check_result<const MODULUS_SIZE: usize>(
         &mut self,
         result: &mut [u32; MODULUS_SIZE],
     ) -> Result<(), Error> {
-        let mode =self.pka.pka_cr().read().mode().bits();
+        let mode = self.pka.pka_cr().read().mode().bits();
         if mode != PkaOpcode::Point as u8 {
             return Error::mode(mode);
         }
         let sr = self.pka.pka_sr().read();
         if sr.addrerrf().bit_is_set() {
             self.clear_all_flags();
-            return Err(Error::Address)
+            return Err(Error::Address);
         } else if sr.ramerrf().bit_is_set() {
             self.clear_all_flags();
-            return Err(Error::Ram)
+            return Err(Error::Ram);
         } else if sr.procendf().bit_is_clear() {
             info!("Waiting for operation to complete...");
             while sr.procendf().bit_is_clear() {
                 asm::nop();
             }
-            info!("Operation completed ({:?})", sr.procendf().bit_is_set() );
+            info!("Operation completed ({:?})", sr.procendf().bit_is_set());
         }
         self.clear_all_flags();
 
@@ -327,7 +336,11 @@ impl From<Sign> for u32 {
 
 /// Elliptic curve.
 #[derive(Debug, PartialEq, Eq)]
-pub struct EllipticCurve<const MODULUS_SIZE: usize, const PRIME_ORDER_SIZE: usize, const OPERAND_SIZE: usize> {
+pub struct EllipticCurve<
+    const MODULUS_SIZE: usize,
+    const PRIME_ORDER_SIZE: usize,
+    const OPERAND_SIZE: usize,
+> {
     /// Curve coefficient a sign.
     ///
     /// **Note:** 0 for positive, 1 for negative.
@@ -374,8 +387,8 @@ pub mod curve {
             0x00000003,
         ],
         coef_b: [
-            0x5ac635d8, 0xaa3a93e7, 0xb3ebbd55, 0x769886bc, 0x651d06b0, 0xcc53b0f6, 0x3bce3c3e, 
-            0x27d2604b
+            0x5ac635d8, 0xaa3a93e7, 0xb3ebbd55, 0x769886bc, 0x651d06b0, 0xcc53b0f6, 0x3bce3c3e,
+            0x27d2604b,
         ],
         modulus: [
             0xffffffff, 0x00000001, 0x00000000, 0x00000000, 0x00000000, 0xffffffff, 0xffffffff,
@@ -393,13 +406,13 @@ pub mod curve {
             0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 0xbce6faad, 0xa7179e84, 0xf3b9cac2,
             0xfc632551,
         ],
-        operand_a : [
+        operand_a: [
             0xffffffff, 0x00000001, 0x00000000, 0x00000000, 0x00000000, 0xffffffff, 0xffffffff,
-            0xfffffffe
+            0xfffffffe,
         ],
-        operand_b : [
+        operand_b: [
             0xffffffff, 0x00000001, 0x00000000, 0x00000000, 0x00000000, 0xffffffff, 0xffffffff,
-            0xfffffff0
+            0xfffffff0,
         ],
     };
 }
