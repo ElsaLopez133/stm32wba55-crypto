@@ -3,11 +3,11 @@
 
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
 // use stm32wba::stm32wba55;
+use cortex_m::asm;
+use cortex_m_rt::entry;
+use defmt::info;
 use stm32wba::stm32wba55::{self};
 use {defmt_rtt as _, panic_probe as _};
-use cortex_m_rt::entry;
-use cortex_m::{asm};
-use defmt::info;
 // use stm32_metapac::{metadata, pka};
 use core::{
     mem::size_of,
@@ -15,7 +15,7 @@ use core::{
 };
 
 const BASE: usize = 0x520C_2000;
-const PKA_RAM_OFFSET: usize = 0x400; 
+const PKA_RAM_OFFSET: usize = 0x400;
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const RAM_NUM_DW: usize = 667;
 
@@ -30,33 +30,32 @@ const MODULUS_OFFSET_PREVIOUS_LAST: usize = BASE + 0x1084;
 
 // P-256 curve parameters. Big endian. The first values are the most significant
 // const N: [u32; 8] = [
-//     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
+//     0xffffffff, 0x00000001, 0x00000000, 0x00000000,
 //     0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
 // ];
 
 // const R2MODN: [u32; 8] = [
-//     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
+//     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9,
 //     0xFFFFFFFE, 0x3, 0x5, 0x2
 // ];
 const OPERAND_LENGTH: u32 = 8 * 32;
-const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32; 
+const WORD_LENGTH: usize = (OPERAND_LENGTH as usize) / 32;
 
 pub const N: [u32; 8] = [
-    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 
-    0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
+    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
 ];
 
 pub const R2MODN: [u32; 8] = [
-    0x1C1F0858, 0xD0B168A4, 0x619076AB, 0x51D16BDB, 
-    0xDF119F1B, 0x30A9CDC7, 0x5706ACB0, 0x3AF42ABB
+    0x1C1F0858, 0xD0B168A4, 0x619076AB, 0x51D16BDB, 0xDF119F1B, 0x30A9CDC7, 0x5706ACB0, 0x3AF42ABB,
 ];
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
     debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
-    buf.iter().rev().enumerate().for_each(|(idx, &dw)| {
-        write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
-    });
+    buf.iter()
+        .rev()
+        .enumerate()
+        .for_each(|(idx, &dw)| write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw));
 }
 
 unsafe fn read_ram(offset: usize, buf: &mut [u32]) {
@@ -73,7 +72,6 @@ unsafe fn zero_ram() {
         .for_each(|dw| unsafe { write_volatile((dw * 4 + RAM_BASE) as *mut u32, 0) });
 }
 
-
 #[entry]
 unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
@@ -82,9 +80,7 @@ unsafe fn main() -> ! {
     let rng = &p.RNG;
 
     // Enable HSI as a stable clock source
-    clock.rcc_cr().modify(|_, w| w
-    .hseon().set_bit()
-    );
+    clock.rcc_cr().modify(|_, w| w.hseon().set_bit());
     while clock.rcc_cr().read().hserdy().bit_is_clear() {
         asm::nop();
     }
@@ -98,25 +94,28 @@ unsafe fn main() -> ! {
 
     // Configure RNG
     // To configure, CONDRST bit is set to 1 in the same access and CONFIGLOCK remains at 0
-    rng.rng_cr().write(|w| w
-        .rngen().clear_bit()
-        .condrst().set_bit()
-        .configlock().clear_bit()  
-        .nistc().clear_bit()   // Hardware default values for NIST compliant RNG
-        .ced().clear_bit()     // Clock error detection enabled
+    rng.rng_cr().write(
+        |w| {
+            w.rngen()
+                .clear_bit()
+                .condrst()
+                .set_bit()
+                .configlock()
+                .clear_bit()
+                .nistc()
+                .clear_bit() // Hardware default values for NIST compliant RNG
+                .ced()
+                .clear_bit()
+        }, // Clock error detection enabled
     );
 
     // First clear CONDRST while keeping RNGEN disabled
-    rng.rng_cr().modify(|_, w| w
-        .condrst().clear_bit()
-    );
+    rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
 
     // Then enable RNG in a separate step
-    rng.rng_cr().modify(|_, w| w
-        .rngen().set_bit()
-        .ie().set_bit()
-    );
-    
+    rng.rng_cr()
+        .modify(|_, w| w.rngen().set_bit().ie().set_bit());
+
     while rng.rng_sr().read().drdy().bit_is_clear() {
         asm::nop();
     }
@@ -133,11 +132,8 @@ unsafe fn main() -> ! {
     }
 
     // Enable PKA peripheral
-    pka.pka_cr().write(|w| w
-        .en().set_bit()
-        .mode().bits(0x01)
-    );
- 
+    pka.pka_cr().write(|w| w.en().set_bit().mode().bits(0x01));
+
     // Wait for PKA to initialize
     while pka.pka_sr().read().initok().bit_is_clear() {
         asm::nop();
@@ -145,27 +141,29 @@ unsafe fn main() -> ! {
     info!("PKA initialized successfully!");
 
     // Clear any previous error flags
-    pka.pka_clrfr().write(|w| w
-        .addrerrfc().set_bit()
-        .ramerrfc().set_bit()
-        .procendfc().set_bit()
-    );
+    pka.pka_clrfr().write(|w| {
+        w.addrerrfc()
+            .set_bit()
+            .ramerrfc()
+            .set_bit()
+            .procendfc()
+            .set_bit()
+    });
 
     // Write the values - using 32-bit words
     zero_ram();
     write_ram(MODULUS_LENGTH_OFFSET, &[OPERAND_LENGTH]);
     write_ram(MODULUS_OFFSET, &N);
-    
-    // Check the values 
+
+    // Check the values
     let mut buf = [0u32; WORD_LENGTH];
     read_ram(MODULUS_OFFSET, &mut buf);
     info!("modulus: {:#X}", buf);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
-    pka.pka_cr().modify(|_, w| w
-        .mode().bits(0x01)
-        .start().set_bit()  // Start the operation
+    pka.pka_cr().modify(
+        |_, w| w.mode().bits(0x01).start().set_bit(), // Start the operation
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
@@ -179,7 +177,7 @@ unsafe fn main() -> ! {
     let mut result = [0u32; WORD_LENGTH];
     read_ram(RESULT_OFFSET, &mut result);
     info!("Montomery parameter for N: {:#X} is {:#X}", N, result);
-    
+
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
 

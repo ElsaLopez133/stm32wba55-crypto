@@ -2,25 +2,25 @@
 #![no_main]
 // Test vectors: https://github.com/scogliani/ecc-test-vectors?tab=readme-ov-file
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
-use stm32wba::stm32wba55::{self};
-use {defmt_rtt as _, panic_probe as _};
-use cortex_m_rt::entry;
-use cortex_m::asm;
-use defmt::info;
 use core::{
     mem::size_of,
     ptr::{read_volatile, write_volatile},
 };
+use cortex_m::asm;
+use cortex_m_rt::entry;
+use defmt::info;
+use stm32wba::stm32wba55::{self};
+use {defmt_rtt as _, panic_probe as _};
 
 const BASE: usize = 0x520C_2000;
-const PKA_RAM_OFFSET: usize = 0x400; 
+const PKA_RAM_OFFSET: usize = 0x400;
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const MODE: u8 = 0x10;
 // const MODE: u8 = 0x0B;
 const RAM_NUM_DW: usize = 667 * 2;
 
 // PKA RAM locations for multiplication
-const OPERAND_LENGTH_OFFSET: usize = BASE + 0x408 ;
+const OPERAND_LENGTH_OFFSET: usize = BASE + 0x408;
 const OPERAND_A_OFFSET: usize = BASE + 0xA50;
 const OPERAND_B_OFFSET: usize = BASE + 0xC68;
 // const OPERAND_B_OFFSET: usize = BASE + 0xC74;
@@ -30,50 +30,53 @@ const MONTGOMERY_OFFSET: usize = BASE + 0x620;
 
 // Big endian. LS comes last
 // const N: [u32; 8] = [
-//     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
+//     0xffffffff, 0x00000001, 0x00000000, 0x00000000,
 //     0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
 // ];
 
 pub const N: [u32; 8] = [
-    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 
-    0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
+    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
 ];
 
 // const A: [u32; 8] = [
-//     0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
+//     0xffffffff, 0x00000001, 0x00000000, 0x00000000,
 //     0x00000000, 0xffffffff, 0xffffffff, 0xfffffffe,
 // ];
 
 const A: [u32; 8] = [
-    0x00000000, 0x00000000, 0x00000000, 0x00000000, 
-    0x00000000, 0x00000000, 0x00000000, 0x00000001,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001,
 ];
 
 const B: [u32; 8] = [
-    0x000000000, 0x00000000, 0x00000000, 0x00000000, 
-    0x000000000, 0x00000000, 0x00000000, 0x00000001,
+    0x000000000,
+    0x00000000,
+    0x00000000,
+    0x00000000,
+    0x000000000,
+    0x00000000,
+    0x00000000,
+    0x00000001,
 ];
 
 const R2MODN: [u32; 8] = [
-    0x1C1F0858, 0xD0B168A4, 0x619076AB, 0x51D16BDB, 
-    0xDF119F1B, 0x30A9CDC7, 0x5706ACB0, 0x3AF42ABB
+    0x1C1F0858, 0xD0B168A4, 0x619076AB, 0x51D16BDB, 0xDF119F1B, 0x30A9CDC7, 0x5706ACB0, 0x3AF42ABB,
 ];
 
 // const R2MODN: [u32; 8] = [
-//     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9, 
+//     0xFFFFFFFC, 0xFFFFFFFC, 0xFFFFFFFB, 0xFFFFFFF9,
 //     0xFFFFFFFE, 0x00000003, 0x00000005, 0x00000002
 // ];
 
 // const OPERAND_LENGTH: u32 = 8 * 32;
-// const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;    
+// const WORD_LENGTH: usize = (OPERAND_LENGTH as usize)/32;
 
-// const A: [u32; 2] = [0xe0000000, 0xf0000000];               
-// const B: [u32; 4] = [0x1, 0x2, 0x4, 0x3];          
-// const B: [u32; 2] = [0x0, 0x3];          
+// const A: [u32; 2] = [0xe0000000, 0xf0000000];
+// const B: [u32; 4] = [0x1, 0x2, 0x4, 0x3];
+// const B: [u32; 2] = [0x0, 0x3];
 // const N: [u32; 2] = [0xf0000000, 0xd0000001];
-// const R2MODN: [u32; 1] = [0x30000000];   
+// const R2MODN: [u32; 1] = [0x30000000];
 const OPERAND_LENGTH: u32 = 8 * 32;
-const WORD_LENGTH: usize = 8; //(OPERAND_LENGTH as usize)/32;    
+const WORD_LENGTH: usize = 8; //(OPERAND_LENGTH as usize)/32;
 
 // the least significant bit must be placed in bit 0 at address offset
 // unsafe fn write_ram(offset: usize, buf: &[u32]) {
@@ -87,7 +90,7 @@ const WORD_LENGTH: usize = 8; //(OPERAND_LENGTH as usize)/32;
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
     debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
-    
+
     buf.iter().rev().enumerate().for_each(|(idx, &dw)| {
         let addr = offset + idx * size_of::<u32>();
         // info!("Writing: Address {:#X}, Value {:#X}", addr, dw);
@@ -120,7 +123,6 @@ unsafe fn zero_ram() {
         .for_each(|dw| unsafe { write_volatile((dw * 4 + RAM_BASE) as *mut u32, 0) });
 }
 
-
 #[entry]
 unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
@@ -129,9 +131,8 @@ unsafe fn main() -> ! {
     let rng = &p.RNG;
 
     // Enable HSI as a stable clock source
-    clock.rcc_cr().modify(|_, w| w
-    .hseon().set_bit()
-    // .hsikeron().set_bit()
+    clock.rcc_cr().modify(
+        |_, w| w.hseon().set_bit(), // .hsikeron().set_bit()
     );
     while clock.rcc_cr().read().hserdy().bit_is_clear() {
         asm::nop();
@@ -146,25 +147,28 @@ unsafe fn main() -> ! {
 
     // Configure RNG
     // To configure, CONDRST bit is set to 1 in the same access and CONFIGLOCK remains at 0
-    rng.rng_cr().write(|w| w
-        .rngen().clear_bit()
-        .condrst().set_bit()
-        .configlock().clear_bit()
-        .nistc().clear_bit()   // Hardware default values for NIST compliant RNG
-        .ced().clear_bit()     // Clock error detection enabled
+    rng.rng_cr().write(
+        |w| {
+            w.rngen()
+                .clear_bit()
+                .condrst()
+                .set_bit()
+                .configlock()
+                .clear_bit()
+                .nistc()
+                .clear_bit() // Hardware default values for NIST compliant RNG
+                .ced()
+                .clear_bit()
+        }, // Clock error detection enabled
     );
 
     // First clear CONDRST while keeping RNGEN disabled
-    rng.rng_cr().modify(|_, w| w
-        .condrst().clear_bit()
-    );
+    rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
 
     // Then enable RNG in a separate step
-    rng.rng_cr().modify(|_, w| w
-        .rngen().set_bit()
-        .ie().set_bit()
-    );
-    
+    rng.rng_cr()
+        .modify(|_, w| w.rngen().set_bit().ie().set_bit());
+
     while rng.rng_sr().read().drdy().bit_is_clear() {
         asm::nop();
     }
@@ -180,11 +184,8 @@ unsafe fn main() -> ! {
     }
 
     // Enable PKA peripheral
-    pka.pka_cr().write(|w| w
-        .en().set_bit()
-        .mode().bits(MODE)
-    );
- 
+    pka.pka_cr().write(|w| w.en().set_bit().mode().bits(MODE));
+
     // Wait for PKA to initialize
     while pka.pka_sr().read().initok().bit_is_clear() {
         asm::nop();
@@ -192,11 +193,14 @@ unsafe fn main() -> ! {
     // info!("PKA initialized successfully!");
 
     // Clear any previous error flags
-    pka.pka_clrfr().write(|w| w
-        .addrerrfc().set_bit()
-        .ramerrfc().set_bit()
-        .procendfc().set_bit()
-    );
+    pka.pka_clrfr().write(|w| {
+        w.addrerrfc()
+            .set_bit()
+            .ramerrfc()
+            .set_bit()
+            .procendfc()
+            .set_bit()
+    });
 
     // First compute AR = A x r2modn mod n
     zero_ram();
@@ -206,16 +210,15 @@ unsafe fn main() -> ! {
     write_ram(MONTGOMERY_OFFSET, &R2MODN);
     write_ram(MODULUS_OFFSET, &N);
 
-    // // Check the values 
+    // // Check the values
     // let mut buf = [0u32; WORD_LENGTH ];
     // read_ram(OPERAND_B_OFFSET, &mut buf);
     // read_ram(OPERAND_A_OFFSET, &mut buf);
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
-    pka.pka_cr().modify(|_, w| w
-        .mode().bits(MODE)
-        .start().set_bit()  // Start the operation
+    pka.pka_cr().modify(
+        |_, w| w.mode().bits(MODE).start().set_bit(), // Start the operation
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
@@ -233,12 +236,15 @@ unsafe fn main() -> ! {
     } else {
         info!("No errors");
     }
-    
+
     // Read the result
-    let mut AR = [0u32; WORD_LENGTH ];
+    let mut AR = [0u32; WORD_LENGTH];
     read_ram(RESULT_OFFSET, &mut AR);
-    info!("AR = A({:#X}) * R2MODN({:#X}) (mod {:#X}) = {:#X}", A, R2MODN, N, AR);
-    
+    info!(
+        "AR = A({:#X}) * R2MODN({:#X}) (mod {:#X}) = {:#X}",
+        A, R2MODN, N, AR
+    );
+
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
 
@@ -251,9 +257,8 @@ unsafe fn main() -> ! {
 
     // Configure PKA operation mode and start
     info!("Starting PKA operation...");
-    pka.pka_cr().modify(|_, w| w
-        .mode().bits(MODE)
-        .start().set_bit()  // Start the operation
+    pka.pka_cr().modify(
+        |_, w| w.mode().bits(MODE).start().set_bit(), // Start the operation
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
@@ -264,13 +269,15 @@ unsafe fn main() -> ! {
     info!("Operation complete!");
 
     // Read the result
-    let mut result = [0u32; WORD_LENGTH ];
+    let mut result = [0u32; WORD_LENGTH];
     read_ram(RESULT_OFFSET, &mut result);
-    info!("AB = AR({:#X}) * B({:#X}) (mod {:#X}) = {:#X}", AR, B, N, result);
-    
+    info!(
+        "AB = AR({:#X}) * B({:#X}) (mod {:#X}) = {:#X}",
+        AR, B, N, result
+    );
+
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
-
 
     loop {}
 }

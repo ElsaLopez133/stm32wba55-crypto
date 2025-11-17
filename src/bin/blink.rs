@@ -36,10 +36,10 @@ use {defmt_rtt as _, panic_probe as _};
 //         let gpio = GpioPA9 {
 //             gpioa: &p.GPIOA,
 //         };
-        
+
 //         // Set initial state to low (optional)
 //         gpio.set_low();
-        
+
 //         gpio
 //     }
 

@@ -3,15 +3,15 @@
 
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
 // use stm32wba::stm32wba55;
-use stm32wba::stm32wba55::{self,pka::pka_cr::MODE};
-use {defmt_rtt as _, panic_probe as _};
-use cortex_m_rt::entry;
-use cortex_m::asm;
-use defmt::info;
 use core::{
     mem::size_of,
     ptr::{read_volatile, write_volatile},
 };
+use cortex_m::asm;
+use cortex_m_rt::entry;
+use defmt::info;
+use stm32wba::stm32wba55::{self, pka::pka_cr::MODE};
+use {defmt_rtt as _, panic_probe as _};
 
 #[entry]
 fn main() -> ! {
@@ -25,15 +25,18 @@ fn main() -> ! {
 
     let curve = curve::NIST_P256;
     let mut result: [u32; 8] = [0; 8];
-    
+
     // Perform ECDSA Signing using PKA
-    match pka.modular_subtraction(&curve, &mut result ) {
-        Ok(_) => {},
+    match pka.modular_subtraction(&curve, &mut result) {
+        Ok(_) => {}
         Err(e) => {
             info!("Error during Subtraction");
         }
     }
-    info!("{:#X} - {:#X}  = {:#X}",curve.operand_a, curve.operand_b, result);
+    info!(
+        "{:#X} - {:#X}  = {:#X}",
+        curve.operand_a, curve.operand_b, result
+    );
 
     loop {
         asm::nop();
@@ -45,8 +48,8 @@ fn main() -> ! {
 pub enum Error {
     Address,
     Ram,
-    Mode {mode: u8},
-    Unknown {bits: u32},
+    Mode { mode: u8 },
+    Unknown { bits: u32 },
     Busy,
 }
 
@@ -120,16 +123,16 @@ impl From<PkaOpcode> for u8 {
 }
 
 const BASE: usize = 0x520C_2000;
-const PKA_RAM_OFFSET: usize = 0x400; 
+const PKA_RAM_OFFSET: usize = 0x400;
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const RAM_NUM_DW: usize = 667;
 
 // PKA RAM locations
-const OPERAND_LENGTH_OFFSET: usize = BASE +  0x408 ;
-const OPERAND_A_OFFSET: usize = BASE +  0xA50;
-const OPERAND_B_OFFSET: usize = BASE +  0xC68;
-const MODULUS_OFFSET: usize = BASE +  0x1088;
-const RESULT_OFFSET: usize = BASE +  0xE78;
+const OPERAND_LENGTH_OFFSET: usize = BASE + 0x408;
+const OPERAND_A_OFFSET: usize = BASE + 0xA50;
+const OPERAND_B_OFFSET: usize = BASE + 0xC68;
+const MODULUS_OFFSET: usize = BASE + 0x1088;
+const RESULT_OFFSET: usize = BASE + 0xE78;
 
 /// PKA driver.
 #[derive(Debug)]
@@ -147,31 +150,34 @@ impl Pka {
 
         // Configure RNG clock
         rcc.rcc_ccipr2().write(|w| w.rngsel().b_0x2());
-        
+
         // Enable RNG clock on AHB2
         rcc.rcc_ahb2enr().modify(|_, w| w.rngen().set_bit());
         while rcc.rcc_ahb2enr().read().rngen().bit_is_clear() {
             asm::nop();
         }
 
-        // Configure RNG 
-        rng.rng_cr().write(|w| w
-            .rngen().clear_bit()
-            .condrst().set_bit()
-            .configlock().clear_bit() 
-            .nistc().clear_bit()   
-            .ced().clear_bit() 
-        );
+        // Configure RNG
+        rng.rng_cr().write(|w| {
+            w.rngen()
+                .clear_bit()
+                .condrst()
+                .set_bit()
+                .configlock()
+                .clear_bit()
+                .nistc()
+                .clear_bit()
+                .ced()
+                .clear_bit()
+        });
 
         // Clear CONDRST while keeping RNGEN disabled
         rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
 
         // Enable RNG with interrupts
-        rng.rng_cr().modify(|_, w| w
-            .rngen().set_bit()
-            .ie().set_bit()
-        );
-        
+        rng.rng_cr()
+            .modify(|_, w| w.rngen().set_bit().ie().set_bit());
+
         while rng.rng_sr().read().drdy().bit_is_clear() {
             asm::nop();
         }
@@ -187,7 +193,7 @@ impl Pka {
 
         // Enable PKA peripheral
         pka.pka_cr().modify(|_, w| w.en().set_bit());
-    
+
         // Wait for PKA to initialize
         while pka.pka_sr().read().initok().bit_is_clear() {
             asm::nop();
@@ -225,7 +231,7 @@ impl Pka {
             write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
         });
     }
-    
+
     unsafe fn read_ram(&mut self, offset: usize, buf: &mut [u32]) {
         debug_assert_eq!(offset % 4, 0);
         debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
@@ -244,10 +250,13 @@ impl Pka {
             w.start().set_bit();
             w.en().set_bit()
         });
-
     }
 
-    pub fn modular_subtraction<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
+    pub fn modular_subtraction<
+        const MODULUS_SIZE: usize,
+        const OPERAND_SIZE: usize,
+        const PRIME_ORDER_SIZE: usize,
+    >(
         &mut self,
         curve: &EllipticCurve<MODULUS_SIZE, PRIME_ORDER_SIZE, OPERAND_SIZE>,
         result: &mut [u32; OPERAND_SIZE],
@@ -257,7 +266,11 @@ impl Pka {
         self.modular_subtraction_result(result)
     }
 
-    pub fn modular_subtraction_start<const MODULUS_SIZE: usize, const OPERAND_SIZE: usize, const PRIME_ORDER_SIZE: usize>(
+    pub fn modular_subtraction_start<
+        const MODULUS_SIZE: usize,
+        const OPERAND_SIZE: usize,
+        const PRIME_ORDER_SIZE: usize,
+    >(
         &mut self,
         curve: &EllipticCurve<MODULUS_SIZE, PRIME_ORDER_SIZE, OPERAND_SIZE>,
     ) -> Result<(), Error> {
@@ -280,7 +293,7 @@ impl Pka {
             Err(Error::Ram)
         } else {
             unsafe {
-               self.start_process(PkaOpcode::ModularSub); 
+                self.start_process(PkaOpcode::ModularSub);
             }
             Ok(())
         }
@@ -290,19 +303,19 @@ impl Pka {
         &mut self,
         result: &mut [u32; OPERAND_SIZE],
     ) -> Result<(), Error> {
-        let mode =self.pka.pka_cr().read().mode();
+        let mode = self.pka.pka_cr().read().mode();
         if !mode.is_b_0x_f() {
             return Error::mode(mode.bits());
         }
         let sr = self.pka.pka_sr().read();
         if sr.addrerrf().bit_is_set() {
             self.clear_all_flags();
-            return Err(Error::Address)
+            return Err(Error::Address);
         } else if sr.ramerrf().bit_is_set() {
             self.clear_all_flags();
-            return Err(Error::Ram)
+            return Err(Error::Ram);
         } else if sr.procendf().bit_is_clear() {
-            return Err(Error::Busy)
+            return Err(Error::Busy);
         } else {
             self.clear_all_flags();
 
@@ -330,7 +343,11 @@ impl From<Sign> for u32 {
 
 /// Elliptic curve.
 #[derive(Debug, PartialEq, Eq)]
-pub struct EllipticCurve<const MODULUS_SIZE: usize, const PRIME_ORDER_SIZE: usize, const OPERAND_SIZE: usize> {
+pub struct EllipticCurve<
+    const MODULUS_SIZE: usize,
+    const PRIME_ORDER_SIZE: usize,
+    const OPERAND_SIZE: usize,
+> {
     /// Curve coefficient a sign.
     ///
     /// **Note:** 0 for positive, 1 for negative.
@@ -390,13 +407,13 @@ pub mod curve {
             0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 0xbce6faad, 0xa7179e84, 0xf3b9cac2,
             0xfc632551,
         ],
-        operand_a : [
+        operand_a: [
             0xffffffff, 0x00000001, 0x00000000, 0x00000000, 0x00000000, 0xffffffff, 0xffffffff,
-            0xfffffffe
+            0xfffffffe,
         ],
-        operand_b : [
+        operand_b: [
             0xffffffff, 0x00000001, 0x00000000, 0x00000000, 0x00000000, 0xffffffff, 0xffffffff,
-            0xfffffff0
+            0xfffffff0,
         ],
     };
 }

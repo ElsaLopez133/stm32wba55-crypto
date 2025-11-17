@@ -2,18 +2,18 @@
 #![no_main]
 
 // Reference Manual: file:///C:/Users/elopezpe/OneDrive/Documentos/PhD/micro/stm32eba55cg/rm0493-multiprotocol-wireless-bluetooth-low-energy-and-ieee802154-stm32wba5xxx-arm-based-32-bit-mcus-stmicroelectronics-en.pdf
-use stm32wba::stm32wba55::{self};
-use {defmt_rtt as _, panic_probe as _};
-use cortex_m_rt::entry;
-use cortex_m::asm;
-use defmt::info;
 use core::{
     mem::size_of,
     ptr::{read_volatile, write_volatile},
 };
+use cortex_m::asm;
+use cortex_m_rt::entry;
+use defmt::info;
+use stm32wba::stm32wba55::{self};
+use {defmt_rtt as _, panic_probe as _};
 
 const BASE: usize = 0x520C_2000;
-const PKA_RAM_OFFSET: usize = 0x400; 
+const PKA_RAM_OFFSET: usize = 0x400;
 const RAM_BASE: usize = BASE + PKA_RAM_OFFSET;
 const RAM_NUM_DW: usize = 667;
 const SIGN: u8 = 0x24;
@@ -21,7 +21,7 @@ const VERIFY: u8 = 0x26;
 const OPERAND_LENGTH: u32 = 8 * 32;
 const PRIME_ORDER_SIZE: usize = 8;
 const MODULUS_SIZE: usize = 8;
-const WORD_SIZE: usize = (OPERAND_LENGTH as usize)/32;   
+const WORD_SIZE: usize = (OPERAND_LENGTH as usize) / 32;
 
 // ECDSA sign input addresses
 const ECDSA_SIGN_N_LEN: usize = BASE + 0x400;
@@ -63,66 +63,56 @@ const ECDSA_VERIFY_OUT: usize = BASE + 0x5D0;
 const ECDSA_VERIFY_SIGN_OUT_R: usize = BASE + 0x578;
 
 const PRIV_KEY: [u32; 8] = [
-    0xC477F9F6, 0x5C22CCE2, 0x0657FAA5, 0xB2D1D812, 0x2336F851, 0xA508A1ED, 0x04E479C3,
-    0x4985BF96
+    0xC477F9F6, 0x5C22CCE2, 0x0657FAA5, 0xB2D1D812, 0x2336F851, 0xA508A1ED, 0x04E479C3, 0x4985BF96,
 ];
 
 const CURVE_PT_X: [u32; 8] = [
-    0xB7E08AFD, 0xFE94BAD3, 0xF1DC8C73, 0x4798BA1C, 0x62B3A0AD, 0x1E9EA2A3, 0x8201CD08, 
-    0x89BC7A19
+    0xB7E08AFD, 0xFE94BAD3, 0xF1DC8C73, 0x4798BA1C, 0x62B3A0AD, 0x1E9EA2A3, 0x8201CD08, 0x89BC7A19,
 ];
 const CURVE_PT_Y: [u32; 8] = [
-    0x3603F747, 0x959DBF7A, 0x4BB226E4, 0x19287290, 0x63ADC7AE, 0x43529E61, 0xB563BBC6, 
-    0x06CC5E09
+    0x3603F747, 0x959DBF7A, 0x4BB226E4, 0x19287290, 0x63ADC7AE, 0x43529E61, 0xB563BBC6, 0x06CC5E09,
 ];
 
 const A_SIGN: u32 = 0x1;
 
 const A: [u32; 8] = [
-    0x00000000, 0x00000000, 0x00000000, 0x00000000, 
-    0x00000000, 0x00000000, 0x00000000, 0x00000003,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000003,
 ];
 const P: [u32; 8] = [
-    0xffffffff, 0x00000001, 0x00000000, 0x00000000, 
-    0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
+    0xffffffff, 0x00000001, 0x00000000, 0x00000000, 0x00000000, 0xffffffff, 0xffffffff, 0xffffffff,
 ];
 
 const B: [u32; 8] = [
-    0x5ac635d8, 0xaa3a93e7, 0xb3ebbd55, 0x769886bc,
-    0x651d06b0, 0xcc53b0f6, 0x3bce3c3e, 0x27d2604b
+    0x5ac635d8, 0xaa3a93e7, 0xb3ebbd55, 0x769886bc, 0x651d06b0, 0xcc53b0f6, 0x3bce3c3e, 0x27d2604b,
 ];
 
 const BASE_POINT_X: [u32; 8] = [
-    0x6b17d1f2, 0xe12c4247, 0xf8bce6e5, 0x63a440f2, 
-    0x77037d81, 0x2deb33a0, 0xf4a13945, 0xd898c296,
+    0x6b17d1f2, 0xe12c4247, 0xf8bce6e5, 0x63a440f2, 0x77037d81, 0x2deb33a0, 0xf4a13945, 0xd898c296,
 ];
 
 const BASE_POINT_Y: [u32; 8] = [
-    0x4fe342e2, 0xfe1a7f9b, 0x8ee7eb4a, 0x7c0f9e16, 
-    0x2bce3357, 0x6b315ece, 0xcbb64068, 0x37bf51f5,
+    0x4fe342e2, 0xfe1a7f9b, 0x8ee7eb4a, 0x7c0f9e16, 0x2bce3357, 0x6b315ece, 0xcbb64068, 0x37bf51f5,
 ];
 
 const PRIME_ORDER: [u32; 8] = [
-    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 
-    0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
+    0xffffffff, 0x00000000, 0xffffffff, 0xffffffff, 0xbce6faad, 0xa7179e84, 0xf3b9cac2, 0xfc632551,
 ];
 
-const  NONCE: [u32; 8] = [
-    0x7A1A7E52, 0x797FC8CA, 0xAA435D2A, 0x4DACE391,
-    0x58504BF2, 0x04FBE19F, 0x14DBB427, 0xFAEE50AE
+const NONCE: [u32; 8] = [
+    0x7A1A7E52, 0x797FC8CA, 0xAA435D2A, 0x4DACE391, 0x58504BF2, 0x04FBE19F, 0x14DBB427, 0xFAEE50AE,
 ];
 
 const HASH: [u32; 8] = [
-    0xA41A41A1, 0x2A799548, 0x211C410C, 0x65D8133A, 
-    0xFDE34D28, 0xBDD542E4, 0xB680CF28, 0x99C8A8C4
+    0xA41A41A1, 0x2A799548, 0x211C410C, 0x65D8133A, 0xFDE34D28, 0xBDD542E4, 0xB680CF28, 0x99C8A8C4,
 ];
 
 unsafe fn write_ram(offset: usize, buf: &[u32]) {
     debug_assert_eq!(offset % 4, 0);
     debug_assert!(offset + buf.len() * size_of::<u32>() < 0x520C_33FF);
-    buf.iter().rev().enumerate().for_each(|(idx, &dw)| {
-        write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw)
-    });
+    buf.iter()
+        .rev()
+        .enumerate()
+        .for_each(|(idx, &dw)| write_volatile((offset + idx * size_of::<u32>()) as *mut u32, dw));
 }
 
 unsafe fn read_ram(offset: usize, buf: &mut [u32]) {
@@ -139,6 +129,13 @@ unsafe fn zero_ram() {
         .for_each(|dw| unsafe { write_volatile((dw * 4 + RAM_BASE) as *mut u32, 0) });
 }
 
+#[inline(always)]
+fn full_barrier() {
+    cortex_m::asm::dsb();
+    cortex_m::asm::dmb();
+    cortex_m::asm::isb();
+}
+
 #[entry]
 unsafe fn main() -> ! {
     let p = stm32wba55::Peripherals::take().unwrap();
@@ -148,9 +145,7 @@ unsafe fn main() -> ! {
     let gpio = &p.GPIOA;
 
     // Enable HSI as a stable clock source
-    clock.rcc_cr().modify(|_, w| w
-    .hseon().set_bit()
-    );
+    clock.rcc_cr().modify(|_, w| w.hseon().set_bit());
     while clock.rcc_cr().read().hserdy().bit_is_clear() {
         asm::nop();
     }
@@ -166,37 +161,44 @@ unsafe fn main() -> ! {
     }
 
     // set pin to putput mode
-    gpio.gpioa_moder().modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
+    gpio.gpioa_moder()
+        .modify(|_, w| unsafe { w.mode12().bits(0b01) }); // PA15 as output
     // set output type to push-pull
     gpio.gpioa_otyper().modify(|_, w| w.ot12().clear_bit());
     // set speed to low
-    gpio.gpioa_ospeedr().modify(|_, w| unsafe { w.ospeed12().bits(0b00) });
+    gpio.gpioa_ospeedr()
+        .modify(|_, w| unsafe { w.ospeed12().bits(0b00) });
     // no pull-up/pull-down
-    gpio.gpioa_pupdr().modify(|_, w| unsafe { w.pupd12().bits(0b00) });
+    gpio.gpioa_pupdr()
+        .modify(|_, w| unsafe { w.pupd12().bits(0b00) });
     // set initial state to low
-    gpio.gpioa_bsrr().write(|w: &mut stm32wba::raw::W<stm32wba55::gpioa::gpioa_bsrr::GPIOA_BSRRrs>| w.br12().set_bit());
+    gpio.gpioa_bsrr().write(
+        |w: &mut stm32wba::raw::W<stm32wba55::gpioa::gpioa_bsrr::GPIOA_BSRRrs>| w.br12().set_bit(),
+    );
 
     // Configure RNG
     // To configure, CONDRST bit is set to 1 in the same access and CONFIGLOCK remains at 0
-    rng.rng_cr().write(|w| w
-        .rngen().clear_bit()
-        .condrst().set_bit()
-        .configlock().clear_bit()
-        .nistc().clear_bit()  
-        .ced().clear_bit()
-    );
+    rng.rng_cr().write(|w| {
+        w.rngen()
+            .clear_bit()
+            .condrst()
+            .set_bit()
+            .configlock()
+            .clear_bit()
+            .nistc()
+            .clear_bit()
+            .ced()
+            .clear_bit()
+    });
 
     // First clear CONDRST while keeping RNGEN disabled
-    rng.rng_cr().modify(|_, w| w
-        .condrst().clear_bit()
-    );
+    rng.rng_cr().modify(|_, w| w.condrst().clear_bit());
+    full_barrier();
 
     // Then enable RNG in a separate step
-    rng.rng_cr().modify(|_, w| w
-        .rngen().set_bit()
-        .ie().set_bit()
-    );
-    
+    rng.rng_cr()
+        .modify(|_, w| w.rngen().set_bit().ie().set_bit());
+
     while rng.rng_sr().read().drdy().bit_is_clear() {
         asm::nop();
     }
@@ -212,11 +214,10 @@ unsafe fn main() -> ! {
     }
 
     // Enable PKA peripheral
-    pka.pka_cr().write(|w| w
-        .en().set_bit()
-        // .mode().bits(MODE)
+    pka.pka_cr().write(
+        |w| w.en().set_bit(), // .mode().bits(MODE)
     );
- 
+
     // Wait for PKA to initialize
     while pka.pka_sr().read().initok().bit_is_clear() {
         asm::nop();
@@ -224,11 +225,14 @@ unsafe fn main() -> ! {
     info!("PKA initialized successfully!");
 
     // Clear any previous error flags
-    pka.pka_clrfr().write(|w| w
-        .addrerrfc().set_bit()
-        .ramerrfc().set_bit()
-        .procendfc().set_bit()
-    );
+    pka.pka_clrfr().write(|w| {
+        w.addrerrfc()
+            .set_bit()
+            .ramerrfc()
+            .set_bit()
+            .procendfc()
+            .set_bit()
+    });
 
     // Write the values - using 32-bit words
     zero_ram();
@@ -238,14 +242,14 @@ unsafe fn main() -> ! {
     write_ram(ECDSA_SIGN_A, &A);
     write_ram(ECDSA_SIGN_B, &B);
     write_ram(ECDSA_SIGN_P, &P);
-    write_ram(ECDSA_SIGN_K, &NONCE); 
-    write_ram(ECDSA_SIGN_X, &BASE_POINT_X); 
-    write_ram(ECDSA_SIGN_Y, &BASE_POINT_Y); 
-    write_ram(ECDSA_SIGN_Z, &HASH); 
-    write_ram(ECDSA_SIGN_D, &PRIV_KEY); 
+    write_ram(ECDSA_SIGN_K, &NONCE);
+    write_ram(ECDSA_SIGN_X, &BASE_POINT_X);
+    write_ram(ECDSA_SIGN_Y, &BASE_POINT_Y);
+    write_ram(ECDSA_SIGN_Z, &HASH);
+    write_ram(ECDSA_SIGN_D, &PRIV_KEY);
     write_ram(ECDSA_SIGN_N, &PRIME_ORDER);
 
-    // // Check the values 
+    // // Check the values
     // let mut buf = [0u32; WORD_SIZE];
     // read_ram(ECDSA_SIGN_A, &mut buf);
     // info!("ECDSA_SIGN_A: {:#X}", buf);
@@ -268,9 +272,8 @@ unsafe fn main() -> ! {
     info!("Starting SIGN operation...");
     gpio.gpioa_bsrr().write(|w| w.bs12().set_bit()); // set high
 
-    pka.pka_cr().modify(|_, w| w
-        .mode().bits(SIGN)
-        .start().set_bit()  // Start the operation
+    pka.pka_cr().modify(
+        |_, w| w.mode().bits(SIGN).start().set_bit(), // Start the operation
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
@@ -281,7 +284,7 @@ unsafe fn main() -> ! {
 
     gpio.gpioa_bsrr().write(|w| w.br12().set_bit());
     info!("Operation complete!");
-    
+
     // Read the result
     let mut result = [0u32; 1];
     let mut sign_out_r = [0u32; MODULUS_SIZE];
@@ -291,24 +294,30 @@ unsafe fn main() -> ! {
         info!("No errors : {:#X}", result[0]);
         read_ram(ECDSA_SIGN_OUT_R, &mut sign_out_r);
         read_ram(ECDSA_SIGN_OUT_S, &mut sign_out_s);
-        info!("sign_out_r: {:#X} sign_out_s: {:#X}",sign_out_r, sign_out_s);
+        info!(
+            "sign_out_r: {:#X} sign_out_s: {:#X}",
+            sign_out_r, sign_out_s
+        );
     } else if result[0] == 0xCBC9 {
         info!("Error in computation: {:#X}", result);
     } else if result[0] == 0xA3B7 {
         info!("sign_r is zero: {:#X}", result);
     } else if result[0] == 0xF946 {
         info!("sign_s is zero: {:#X}", result);
-    }  
+    }
 
     // Clear the completion flag
     pka.pka_clrfr().write(|w| w.procendfc().set_bit());
 
     // Clear any previous error flags
-    pka.pka_clrfr().write(|w| w
-        .addrerrfc().set_bit()
-        .ramerrfc().set_bit()
-        .procendfc().set_bit()
-    );
+    pka.pka_clrfr().write(|w| {
+        w.addrerrfc()
+            .set_bit()
+            .ramerrfc()
+            .set_bit()
+            .procendfc()
+            .set_bit()
+    });
 
     // Verification
     zero_ram();
@@ -332,9 +341,8 @@ unsafe fn main() -> ! {
     info!("Starting Verify operation...");
     gpio.gpioa_bsrr().write(|w| w.bs12().set_bit()); // set high
 
-    pka.pka_cr().modify(|_, w| w
-        .mode().bits(VERIFY)
-        .start().set_bit()  // Start the operation
+    pka.pka_cr().modify(
+        |_, w| w.mode().bits(VERIFY).start().set_bit(), // Start the operation
     );
 
     // Wait for processing to complete - PROCENDF is 1 when done
@@ -352,7 +360,7 @@ unsafe fn main() -> ! {
     if result_verify[0] == 0xD60D {
         info!("No errors: {:#X}", result_verify);
         read_ram(ECDSA_VERIFY_SIGN_OUT_R, &mut sign_out_r_verify);
-        info!("sign_out_r_verify: {:#X}",sign_out_r_verify);
+        info!("sign_out_r_verify: {:#X}", sign_out_r_verify);
     } else if result_verify[0] == 0xA3B7 {
         info!("Invalid signature: {:#X}", result_verify);
     }

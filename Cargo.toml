@@ -1,7 +1,8 @@
 [package]
 name = "stm32wba55cg"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+
 
 [features]
 default = ["defmt"]
@@ -34,4 +35,11 @@ embedded-alloc = "0.5.0"
 stm32wba = { git = "https://github.com/ElsaLopez133/stm32wba55-pac.git", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
 # stm32wba = { path = "/home/elopezpe/stm32wba55-pac", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
 # stm32wba = { path = "/home/elopezpe/stm32-rs/stm32wba", version = "0.1.0", features = ["rt", "critical-section", "stm32wba55"] }
+
+# Rust crypto
+sha2 = { version = "0.10", default-features = false }
+aes = { version = "0.8", default-features = false }
+cipher = "0.4"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "arithmetic"] }
+hex = { version = "0.4", default-features = false }
 
